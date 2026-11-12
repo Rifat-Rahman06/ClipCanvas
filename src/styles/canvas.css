@@ -1,0 +1,621 @@
+.canvas-view {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* `clip` keeps caret/selection scrolling from shifting the transformed
+     canvas; the older value above is the fallback for browsers without it. */
+  overflow: clip;
+  background: var(--surface);
+}
+
+.canvas-view .react-flow {
+  background: var(--surface);
+  /* Chrome scrolls the nearest scrollable ancestor to reveal the caret while
+     typing. React Flow's transform is the only source of canvas movement, so
+     this element must never become a scroll container: otherwise the canvas
+     jumps behind React Flow's back and the caret is left off screen. React
+     Flow sets `overflow: hidden` inline on this element, hence `!important`.
+     `hidden` is the fallback for browsers without `clip`. */
+  overflow: hidden !important;
+  overflow: clip !important;
+}
+
+.canvas-view .react-flow__pane {
+  cursor: grab;
+}
+
+.canvas-view .react-flow__pane:active {
+  cursor: grabbing;
+}
+
+.react-flow__node-note {
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.react-flow__node-note.selected,
+.react-flow__node-note:focus,
+.react-flow__node-note:focus-visible {
+  outline: none;
+}
+
+.react-flow__panel.canvas-fit-panel {
+  margin: 11px;
+}
+
+.canvas-fit-panel .icon-btn {
+  border-color: var(--line);
+  background: var(--surface-raised);
+  color: var(--ink-500);
+  box-shadow: var(--shadow-sm);
+}
+
+.canvas-fit-panel .icon-btn:hover:not(:disabled) {
+  background: var(--surface-muted);
+  color: var(--ink-800);
+}
+
+.canvas-search {
+  position: absolute;
+  top: 11px;
+  right: 56px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: min(360px, calc(100% - 72px));
+  height: 36px;
+  padding: 0 5px 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color var(--speed) var(--ease),
+    box-shadow var(--speed) var(--ease);
+}
+
+.canvas-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.canvas-search-icon {
+  flex: 0 0 auto;
+  color: var(--ink-400);
+}
+
+.canvas-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink-900);
+  font: inherit;
+  font-size: 11.5px;
+  outline: none;
+}
+
+.canvas-search input::placeholder {
+  color: var(--ink-400);
+}
+
+.canvas-search-count {
+  min-width: 46px;
+  color: var(--ink-400);
+  font-size: 9.8px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.canvas-search-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-400);
+  cursor: pointer;
+  transition:
+    background var(--speed) var(--ease),
+    color var(--speed) var(--ease);
+}
+
+.canvas-search-button:hover:not(:disabled) {
+  background: var(--surface-muted);
+  color: var(--ink-800);
+}
+
+.canvas-search-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.canvas-search-close {
+  margin-left: 1px;
+}
+
+::highlight(clipcanvas-canvas-search-all) {
+  background-color: rgba(239, 201, 104, 0.55);
+  color: inherit;
+}
+
+::highlight(clipcanvas-canvas-search-current) {
+  background-color: #f0b429;
+  color: #2b2412;
+}
+
+.note-anchored-toolbar {
+  z-index: 20;
+  max-width: calc(100vw - 24px);
+}
+
+.active-note-toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+}
+
+.canvas-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.canvas-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-muted);
+  color: var(--accent);
+}
+
+.canvas-empty h2 {
+  margin: 0;
+  color: var(--ink-900);
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.canvas-empty p {
+  max-width: 280px;
+  margin: 6px 0 15px;
+  color: var(--ink-400);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.canvas-empty .btn {
+  pointer-events: auto;
+}
+
+/* Note card */
+.note-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ink-800);
+}
+
+.note-card.is-image {
+  height: 100%;
+  overflow: hidden;
+}
+
+.note-card.is-active {
+  box-shadow: 0 0 0 1.5px var(--accent-ring);
+}
+
+/* Inline status badges stay readable at every canvas zoom level. */
+.note-badge {
+  position: absolute;
+  top: -10px;
+  right: 7px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 5px;
+  border: 1px solid var(--accent-strong);
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: var(--shadow-sm);
+  color: #ffffff;
+  font-family: var(--font-ui);
+  font-size: 8.5px;
+  font-weight: 650;
+  letter-spacing: 0.045em;
+  line-height: 1;
+  text-transform: uppercase;
+  pointer-events: none;
+  transform: scale(var(--note-badge-scale, 1));
+  transform-origin: top right;
+}
+
+.note-badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.28);
+}
+
+.note-card:not(.is-editing) {
+  cursor: grab;
+}
+
+.note-card:not(.is-editing):active {
+  cursor: grabbing;
+}
+
+.note-card.is-editing {
+  cursor: text;
+}
+
+.note-card.is-resizing:not(.is-image) {
+  height: 100%;
+  overflow: hidden;
+}
+
+.note-card.is-resizing:not(.is-image) .note-card-scroll {
+  overflow: hidden;
+}
+
+.note-card.is-editing:not(.is-image) .note-card-scroll {
+  overflow: visible;
+}
+
+.note-card.is-editing .rich-text-editor .ProseMirror {
+  overflow: hidden;
+}
+
+.note-card:not(.is-editing) .rich-text-content,
+.note-card:not(.is-editing) .note-preview-empty {
+  pointer-events: none;
+  user-select: none;
+}
+
+.note-card-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  padding: 2px 8px 14px;
+  overflow: visible;
+}
+
+.note-card.is-image .note-card-scroll {
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+.note-card.is-image .note-card-scroll > div,
+.note-card.is-image .rich-text-editor,
+.note-card.is-image .rich-text-editor .ProseMirror,
+.note-card.is-image .rich-text-editor .ProseMirror .react-renderer,
+.note-card.is-image .note-html-preview,
+.note-card.is-image .note-html-preview > p {
+  height: 100%;
+  min-height: 0;
+}
+
+.note-card.is-image .rich-text-editor .ProseMirror,
+.note-card.is-image .note-html-preview {
+  overflow: hidden;
+}
+
+.note-card.is-image .rich-text-editor .ProseMirror > p:empty,
+.note-card.is-image .rich-text-editor .ProseMirror > p.is-empty:last-child,
+.note-card.is-image .note-html-preview > p:empty {
+  display: none;
+}
+
+.note-card.is-image .markdown-body img,
+.note-card.is-image .clipcanvas-image-node,
+.note-card.is-image .clipcanvas-image-node img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border-radius: 0;
+}
+
+.note-card.is-image .markdown-body img,
+.note-card.is-image .clipcanvas-image-node img {
+  object-fit: cover;
+}
+
+.note-card.is-image .clipcanvas-image-node {
+  display: block;
+  overflow: hidden;
+}
+
+.note-card.is-image .clipcanvas-image-resize {
+  display: none;
+}
+
+.note-card-scroll .rich-text-editor {
+  min-height: 0;
+}
+
+.note-card .rich-text-editor .ProseMirror {
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+}
+
+.note-card .rich-text-content {
+  min-height: 0;
+  color: var(--ink-800);
+  font-family: var(--font-serif);
+  font-size: var(--note-font-size, 16px);
+  line-height: 1.72;
+}
+
+.note-card .rich-text-content p,
+.note-card .rich-text-content li {
+  white-space: pre-wrap;
+}
+
+/* Use the same line rhythm for Enter-created paragraphs and pasted hard breaks.
+   The Markdown preview's default paragraph margin made manually typed lines
+   visibly looser than browser-pasted text. */
+.note-card .rich-text-content p {
+  margin-bottom: 0;
+}
+
+.note-card .rich-text-content > *:first-child {
+  margin-top: 0;
+}
+
+.rich-text-editor {
+  outline: none;
+}
+
+.rich-text-editor .ProseMirror {
+  min-height: 120px;
+  outline: none;
+}
+
+.rich-text-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: #b9b5a9;
+  font-style: italic;
+  pointer-events: none;
+}
+
+.note-html-preview {
+  min-height: 0;
+}
+
+/* A blank paragraph typed with Enter has a line box while editing, but an
+   empty <p> has no box at all in the read-only preview, so blank lines
+   collapsed and the note shrank as soon as it lost focus. Give empty
+   paragraphs the editor's line height. */
+.note-card .note-html-preview p:empty {
+  min-height: 1.72em;
+  min-height: 1lh;
+}
+
+.note-preview-empty {
+  margin: 0;
+  color: var(--ink-300);
+  font-family: var(--font-serif);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* Images inside notes */
+.clipcanvas-image-node {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  margin: 6px 0 10px;
+  border-radius: 8px;
+  vertical-align: top;
+}
+
+.clipcanvas-image-node img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+.clipcanvas-image-node.is-selected {
+  box-shadow: 0 0 0 2px var(--accent-ring);
+}
+
+.clipcanvas-image-resize {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border: 2px solid var(--surface-raised);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 3px rgba(31, 37, 31, 0.22);
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 120ms var(--ease);
+}
+
+.clipcanvas-image-node:hover .clipcanvas-image-resize,
+.clipcanvas-image-node.is-selected .clipcanvas-image-resize {
+  opacity: 1;
+}
+
+.clipcanvas-image-loading {
+  width: min(360px, 100%);
+  min-width: 180px;
+  height: 96px;
+  border-radius: 8px;
+  background: linear-gradient(
+    100deg,
+    var(--surface-sunken) 20%,
+    var(--surface-raised) 45%,
+    var(--surface-sunken) 70%
+  );
+  background-size: 220% 100%;
+  animation: clipcanvas-image-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes clipcanvas-image-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+.clipcanvas-image-missing {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  color: var(--ink-400);
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+
+.note-card .markdown-body img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* React Flow resize handles */
+.react-flow__resize-control.note-resize-handle {
+  z-index: 30;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--surface-raised);
+  border-radius: 3px;
+  background: var(--accent);
+  box-shadow: 0 1px 2px rgba(31, 37, 31, 0.18);
+}
+
+.react-flow__resize-control.note-side-handle {
+  border-radius: 50%;
+}
+
+/* Full-edge resize zones. The visible line stays subtle until hover, while
+   the hit area is wide enough to grab along the entire left/right border of
+   an element, including a very tall editor. */
+.react-flow__resize-control.line.note-edge-resize {
+  z-index: 30;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.react-flow__resize-control.line.note-edge-resize.left,
+.react-flow__resize-control.line.note-edge-resize.right {
+  top: 0;
+  width: 12px;
+  height: 100%;
+  border: 0;
+  transform: translate(-50%, 0);
+}
+
+.react-flow__resize-control.line.note-edge-resize.left {
+  left: 0;
+}
+
+.react-flow__resize-control.line.note-edge-resize.right {
+  left: 100%;
+}
+
+.react-flow__resize-control.line.note-edge-resize.top,
+.react-flow__resize-control.line.note-edge-resize.bottom {
+  left: 0;
+  width: 100%;
+  height: 12px;
+  border: 0;
+  transform: translate(0, -50%);
+}
+
+.react-flow__resize-control.line.note-edge-resize.top {
+  top: 0;
+}
+
+.react-flow__resize-control.line.note-edge-resize.bottom {
+  top: 100%;
+}
+
+.react-flow__resize-control.line.note-edge-resize::after {
+  position: absolute;
+  content: '';
+  border-radius: 999px;
+  background: transparent;
+  pointer-events: none;
+  transition: background-color 120ms var(--ease);
+}
+
+.react-flow__resize-control.line.note-edge-resize.left::after,
+.react-flow__resize-control.line.note-edge-resize.right::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+}
+
+.react-flow__resize-control.line.note-edge-resize.top::after,
+.react-flow__resize-control.line.note-edge-resize.bottom::after {
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
+.react-flow__resize-control.line.note-edge-resize:hover::after,
+.react-flow__resize-control.line.note-edge-resize:active::after {
+  background: var(--accent);
+}
