@@ -11,14 +11,14 @@ import {
   ChevronDown,
   FilePlus2,
   Files,
-  FolderClosed,
   FolderPlus,
+  Layers,
   Loader2,
   LockKeyhole,
   Search,
   Save,
 } from 'lucide-react';
-import type { Note, Project } from '../types';
+import type { Canvas, Note } from '../types';
 import {
   classNames,
   countWords,
@@ -29,8 +29,9 @@ import {
   titleFromSelection,
   truncate,
 } from '../lib/utils';
-import { appendHtml, markdownToHtml, plainTextToHtml, textFromHtml } from '../lib/richText';
-import { LIMITS } from '../services/db/repository';
+import { appendHtml, markdownToHtml, textFromHtml } from '../lib/richText';
+import { capturedTextToHtml } from '../lib/insertion';
+import { LIMITS, sortCanvases } from '../services/db/repository';
 import {
   clearCapturePopup,
   readCapturePopup,
@@ -46,30 +47,30 @@ type CaptureState =
 
 type SaveMode = 'new' | 'existing';
 
-interface ProjectTargetProps {
-  projects: Project[];
+interface CanvasTargetProps {
+  canvases: Canvas[];
   noteCounts: Map<string, number>;
-  selectedProjectId: string | null;
-  newProjectName: string;
+  selectedCanvasId: string | null;
+  newCanvasName: string;
   disabled: boolean;
-  onSelectExisting: (projectId: string) => void;
+  onSelectExisting: (canvasId: string) => void;
   onSelectNew: (name: string) => void;
 }
 
-function ProjectTarget({
-  projects,
+function CanvasTarget({
+  canvases,
   noteCounts,
-  selectedProjectId,
-  newProjectName,
+  selectedCanvasId,
+  newCanvasName,
   disabled,
   onSelectExisting,
   onSelectNew,
-}: ProjectTargetProps) {
+}: CanvasTargetProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const selected = projects.find((project) => project.id === selectedProjectId) ?? null;
+  const selected = canvases.find((canvas) => canvas.id === selectedCanvasId) ?? null;
 
   useEffect(() => {
     if (!open) return;
@@ -85,21 +86,19 @@ function ProjectTarget({
   }, [open]);
 
   const normalizedQuery = query.trim().toLocaleLowerCase('en-US');
-  const filtered = projects
-    .filter((project) => {
+  const filtered = canvases
+    .filter((canvas) => {
       if (!normalizedQuery) return true;
-      return `${project.name} ${project.description}`
-        .toLocaleLowerCase('en-US')
-        .includes(normalizedQuery);
+      return canvas.name.toLocaleLowerCase('en-US').includes(normalizedQuery);
     })
     .sort((a, b) => a.name.localeCompare(b.name));
-  const exactMatch = projects.find(
-    (project) => project.name.trim().toLocaleLowerCase('en-US') === normalizedQuery,
+  const exactMatch = canvases.find(
+    (canvas) => canvas.name.trim().toLocaleLowerCase('en-US') === normalizedQuery,
   );
   const canCreate = normalizedQuery.length > 0 && !exactMatch;
 
-  const chooseExisting = (projectId: string) => {
-    onSelectExisting(projectId);
+  const chooseExisting = (canvasId: string) => {
+    onSelectExisting(canvasId);
     setOpen(false);
     setQuery('');
   };
@@ -107,8 +106,8 @@ function ProjectTarget({
   const chooseNew = (name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const existing = projects.find(
-      (project) => project.name.trim().toLocaleLowerCase('en-US') === trimmed.toLocaleLowerCase('en-US'),
+    const existing = canvases.find(
+      (canvas) => canvas.name.trim().toLocaleLowerCase('en-US') === trimmed.toLocaleLowerCase('en-US'),
     );
     if (existing) chooseExisting(existing.id);
     else {
@@ -138,9 +137,9 @@ function ProjectTarget({
 
   const triggerLabel = selected
     ? selected.name
-    : newProjectName
-      ? `${newProjectName} · new project`
-      : 'Choose or create a project';
+    : newCanvasName
+      ? `${newCanvasName} · new canvas`
+      : 'Choose or create a canvas';
 
   return (
     <div className="popup-target" ref={containerRef}>
@@ -153,12 +152,12 @@ function ProjectTarget({
         onClick={() => setOpen((current) => !current)}
       >
         <span className="popup-target-icon">
-          {selected ? <FolderClosed size={16} /> : <FolderPlus size={16} />}
+          {selected ? <Layers size={16} /> : <FolderPlus size={16} />}
         </span>
         <span
           className={classNames(
             'popup-target-value',
-            !selected && !newProjectName && 'is-placeholder',
+            !selected && !newCanvasName && 'is-placeholder',
           )}
         >
           {triggerLabel}
@@ -182,44 +181,44 @@ function ProjectTarget({
                 setQuery(value);
                 // If the typed name already exists, select it immediately so
                 // saving never creates a duplicate by accident.
-                const match = projects.find(
-                  (project) =>
-                    project.name.trim().toLocaleLowerCase('en-US') ===
+                const match = canvases.find(
+                  (canvas) =>
+                    canvas.name.trim().toLocaleLowerCase('en-US') ===
                     value.trim().toLocaleLowerCase('en-US'),
                 );
                 if (match) onSelectExisting(match.id);
               }}
               onKeyDown={handleSearchKeyDown}
-              placeholder="Find a project or type a new name…"
-              aria-label="Find or create a project"
-              maxLength={LIMITS.projectName}
+              placeholder="Find a canvas or type a new name…"
+              aria-label="Find or create a canvas"
+              maxLength={LIMITS.canvasName}
             />
           </div>
-          <div className="popup-target-list" role="listbox" aria-label="Projects">
+          <div className="popup-target-list" role="listbox" aria-label="Canvases">
             {filtered.length === 0 ? (
               <p className="popup-target-empty">
-                {projects.length === 0
-                  ? 'No projects yet. Type a name below, then choose Create project.'
-                  : 'No project matches that name.'}
+                {canvases.length === 0
+                  ? 'No canvases yet. Type a name below, then choose Create canvas.'
+                  : 'No canvas matches that name.'}
               </p>
             ) : (
-              filtered.map((project) => {
-                const active = project.id === selectedProjectId;
+              filtered.map((canvas) => {
+                const active = canvas.id === selectedCanvasId;
                 return (
                   <button
-                    key={project.id}
+                    key={canvas.id}
                     type="button"
                     role="option"
                     aria-selected={active}
                     className={classNames('popup-target-option', active && 'is-active')}
-                    onClick={() => chooseExisting(project.id)}
+                    onClick={() => chooseExisting(canvas.id)}
                   >
-                    <FolderClosed size={15} aria-hidden="true" />
+                    <Layers size={15} aria-hidden="true" />
                     <span className="popup-target-option-copy">
-                      <span className="popup-target-option-name">{project.name}</span>
+                      <span className="popup-target-option-name">{canvas.name}</span>
                       <span className="popup-target-option-meta">
-                        {noteCounts.get(project.id) ?? 0}{' '}
-                        {(noteCounts.get(project.id) ?? 0) === 1 ? 'notebook' : 'notebooks'}
+                        {noteCounts.get(canvas.id) ?? 0}{' '}
+                        {(noteCounts.get(canvas.id) ?? 0) === 1 ? 'element' : 'elements'}
                       </span>
                     </span>
                     {active ? <Check size={14} /> : null}
@@ -236,7 +235,7 @@ function ProjectTarget({
             >
               <FolderPlus size={15} aria-hidden="true" />
               <span>
-                Create project <strong>“{truncate(query.trim(), 42)}”</strong>
+                Create canvas <strong>“{truncate(query.trim(), 42)}”</strong>
               </span>
             </button>
           ) : null}
@@ -270,7 +269,7 @@ function NotebookPicker({ notes, value, onChange, disabled }: NotebookPickerProp
     return (
       <div className="popup-notebook-empty">
         <Files size={17} aria-hidden="true" />
-        <span>No notebooks in this project yet. Choose “Create New Notebook” instead.</span>
+        <span>No elements in this canvas yet. Choose “Create New Element” instead.</span>
       </div>
     );
   }
@@ -286,14 +285,14 @@ function NotebookPicker({ notes, value, onChange, disabled }: NotebookPickerProp
           onKeyDown={(event) => {
             if (event.key === 'Escape') event.stopPropagation();
           }}
-          placeholder="Search notebooks…"
-          aria-label="Search notebooks"
+          placeholder="Search elements…"
+          aria-label="Search elements"
           disabled={disabled}
         />
       </div>
-      <div className="popup-notebook-list" role="listbox" aria-label="Existing notebooks">
+      <div className="popup-notebook-list" role="listbox" aria-label="Existing elements">
         {filtered.length === 0 ? (
-          <p className="popup-target-empty">No notebook matches that search.</p>
+          <p className="popup-target-empty">No element matches that search.</p>
         ) : (
           filtered.map((note) => {
             const active = note.id === value;
@@ -340,8 +339,8 @@ export function PopupApp() {
   const { data, loading, loadError, retryLoad } = notebook;
   const [capture, setCapture] = useState<CaptureState>({ status: 'loading' });
   const [text, setText] = useState('');
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [newProjectName, setNewProjectName] = useState('');
+  const [selectedCanvasId, setSelectedCanvasId] = useState<string | null>(null);
+  const [newCanvasName, setNewCanvasName] = useState('');
   const [mode, setMode] = useState<SaveMode>('existing');
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -388,63 +387,66 @@ export function PopupApp() {
     };
   }, []);
 
-  const projects = data?.projects ?? [];
+  // The side panel is canvas-first, so the capture popup targets the same
+  // canvases by name instead of the internal projects that the UI never shows.
+  const canvases = useMemo(() => sortCanvases(data?.canvases ?? []), [data]);
   const notes = data?.notes ?? [];
   const noteCounts = useMemo(() => {
     const map = new Map<string, number>();
-    for (const note of notes) map.set(note.projectId, (map.get(note.projectId) ?? 0) + 1);
+    for (const note of notes) map.set(note.canvasId, (map.get(note.canvasId) ?? 0) + 1);
     return map;
   }, [notes]);
 
-  const projectNotes = useMemo(() => {
-    if (!selectedProjectId) return [];
+  const canvasNotes = useMemo(() => {
+    if (!selectedCanvasId) return [];
     return notes
-      .filter((note) => note.projectId === selectedProjectId)
+      .filter((note) => note.canvasId === selectedCanvasId)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.title.localeCompare(b.title));
-  }, [notes, selectedProjectId]);
+  }, [notes, selectedCanvasId]);
 
   useEffect(() => {
-    if (selectedProjectId || newProjectName) return;
-    if (projects.length === 0) return;
-    const recent = [...projects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    setSelectedProjectId(recent[0]?.id ?? null);
-  }, [newProjectName, projects, selectedProjectId]);
+    if (selectedCanvasId || newCanvasName) return;
+    if (canvases.length === 0) return;
+    const recent = [...canvases].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    setSelectedCanvasId(recent[0]?.id ?? null);
+  }, [canvases, newCanvasName, selectedCanvasId]);
 
   useEffect(() => {
-    if (!selectedProjectId) return;
-    if (!projects.some((project) => project.id === selectedProjectId)) {
-      setSelectedProjectId(null);
+    if (!selectedCanvasId) return;
+    if (!canvases.some((canvas) => canvas.id === selectedCanvasId)) {
+      setSelectedCanvasId(null);
     }
-  }, [projects, selectedProjectId]);
+  }, [canvases, selectedCanvasId]);
 
   useEffect(() => {
-    // Wait for the database before deciding that a project has no notebooks;
-    // otherwise the existing-notebook default would flip to "new" while load.
+    // Wait for the database before deciding that a canvas has no elements;
+    // otherwise the existing-element default would flip to "new" while loading.
     if (loading || !data || mode !== 'existing') return;
-    if (!selectedProjectId && !newProjectName.trim()) {
-      // Let the recent-project effect make its selection first when projects
-      // exist. With no projects at all, there is nothing to append to.
-      if (projects.length > 0) return;
+    if (!selectedCanvasId && !newCanvasName.trim()) {
+      // Let the recent-canvas effect make its selection first when canvases
+      // exist. With no canvases at all, there is nothing to append to.
+      if (canvases.length > 0) return;
       setMode('new');
       setSelectedNoteId(null);
       return;
     }
-    if (projectNotes.length === 0) {
+    if (canvasNotes.length === 0) {
       setMode('new');
       setSelectedNoteId(null);
       return;
     }
-    if (projectNotes.some((note) => note.id === selectedNoteId)) return;
-    setSelectedNoteId(projectNotes[0]?.id ?? null);
-  }, [data, loading, mode, newProjectName, projectNotes, projects, selectedNoteId, selectedProjectId]);
+    if (canvasNotes.some((note) => note.id === selectedNoteId)) return;
+    setSelectedNoteId(canvasNotes[0]?.id ?? null);
+  }, [canvasNotes, canvases, data, loading, mode, newCanvasName, selectedCanvasId, selectedNoteId]);
 
   const wordCount = countWords(text);
-  const selectedNote = projectNotes.find((note) => note.id === selectedNoteId) ?? null;
-  const canChooseExisting = projectNotes.length > 0 && !newProjectName;
+  const selectedNote = canvasNotes.find((note) => note.id === selectedNoteId) ?? null;
+  const selectedCanvas = canvases.find((canvas) => canvas.id === selectedCanvasId) ?? null;
+  const canChooseExisting = canvasNotes.length > 0 && !newCanvasName;
   const canSave =
     capture.status === 'ready' &&
     text.trim().length > 0 &&
-    (selectedProjectId !== null || newProjectName.trim().length > 0) &&
+    (selectedCanvasId !== null || newCanvasName.trim().length > 0) &&
     (mode === 'new' || Boolean(selectedNote));
 
   const close = async () => {
@@ -453,15 +455,15 @@ export function PopupApp() {
     window.close();
   };
 
-  const handleSelectExistingProject = (projectId: string) => {
-    setSelectedProjectId(projectId);
-    setNewProjectName('');
+  const handleSelectExistingCanvas = (canvasId: string) => {
+    setSelectedCanvasId(canvasId);
+    setNewCanvasName('');
     setError(null);
   };
 
-  const handleSelectNewProject = (name: string) => {
-    setNewProjectName(name);
-    setSelectedProjectId(null);
+  const handleSelectNewCanvas = (name: string) => {
+    setNewCanvasName(name);
+    setSelectedCanvasId(null);
     setSelectedNoteId(null);
     setMode('new');
     setError(null);
@@ -474,16 +476,16 @@ export function PopupApp() {
       setError('Add some text before saving.');
       return;
     }
-    if (!selectedProjectId && !newProjectName.trim()) {
-      setError('Choose a project, or type a new project name.');
+    if (!selectedCanvasId && !newCanvasName.trim()) {
+      setError('Choose a canvas, or type a new canvas name.');
       return;
     }
     if (mode === 'existing' && !selectedNote) {
-      setError('Choose the notebook you want to add this selection to.');
+      setError('Choose the element you want to add this selection to.');
       return;
     }
-    if (mode === 'existing' && newProjectName) {
-      setError('A new project has no notebooks yet. Create a new notebook instead.');
+    if (mode === 'existing' && newCanvasName) {
+      setError('A new canvas has no elements yet. Create a new element instead.');
       return;
     }
 
@@ -494,7 +496,7 @@ export function PopupApp() {
       if (mode === 'existing' && selectedNote) {
         const existingHtml =
           selectedNote.contentHtml ?? markdownToHtml(selectedNote.content);
-        const additionHtml = plainTextToHtml(captured);
+        const additionHtml = capturedTextToHtml(captured);
         const contentHtml = appendHtml(existingHtml, additionHtml);
         const contentText = textFromHtml(contentHtml);
         await notebook.updateNote(selectedNote.id, {
@@ -510,21 +512,31 @@ export function PopupApp() {
           hasUnseenUpdate: true,
         });
       } else {
+        const noteHtml = capturedTextToHtml(captured);
         const input = {
           title: titleFromSelection(captured),
           content: captured,
-          contentHtml: plainTextToHtml(captured),
-          contentText: textFromHtml(plainTextToHtml(captured)),
+          contentHtml: noteHtml,
+          contentText: textFromHtml(noteHtml),
           // Only brand-new elements from the capture popup get the canvas
           // indicator. Appending to an existing note updates that element.
           browserCapture: true,
         };
-        if (newProjectName.trim()) {
-          await notebook.createProjectWithNote({ name: newProjectName.trim() }, input);
-        } else if (selectedProjectId) {
-          await notebook.createNote({ ...input, projectId: selectedProjectId });
+        if (newCanvasName.trim()) {
+          const canvas = await notebook.createCanvas({ name: newCanvasName.trim() });
+          await notebook.createNote({
+            ...input,
+            projectId: canvas.projectId,
+            canvasId: canvas.id,
+          });
+        } else if (selectedCanvas) {
+          await notebook.createNote({
+            ...input,
+            projectId: selectedCanvas.projectId,
+            canvasId: selectedCanvas.id,
+          });
         } else {
-          throw new Error('Choose a project for this notebook.');
+          throw new Error('Choose a canvas for this element.');
         }
       }
 
@@ -625,17 +637,17 @@ export function PopupApp() {
 
         <section className="popup-section">
           <div className="popup-section-head">
-            <span className="field-label">Project</span>
-            {newProjectName ? <span className="popup-badge">New</span> : null}
+            <span className="field-label">Canvas</span>
+            {newCanvasName ? <span className="popup-badge">New</span> : null}
           </div>
-          <ProjectTarget
-            projects={projects}
+          <CanvasTarget
+            canvases={canvases}
             noteCounts={noteCounts}
-            selectedProjectId={selectedProjectId}
-            newProjectName={newProjectName}
+            selectedCanvasId={selectedCanvasId}
+            newCanvasName={newCanvasName}
             disabled={saving}
-            onSelectExisting={handleSelectExistingProject}
-            onSelectNew={handleSelectNewProject}
+            onSelectExisting={handleSelectExistingCanvas}
+            onSelectNew={handleSelectNewCanvas}
           />
         </section>
 
@@ -657,7 +669,7 @@ export function PopupApp() {
                 <FilePlus2 size={17} aria-hidden="true" />
               </span>
               <span className="popup-mode-copy">
-                <span className="popup-mode-title">Create New Notebook</span>
+                <span className="popup-mode-title">Create New Element</span>
               </span>
               <span className="popup-mode-check">
                 {mode === 'new' ? <Check size={14} aria-hidden="true" /> : null}
@@ -679,7 +691,7 @@ export function PopupApp() {
                 <Files size={17} aria-hidden="true" />
               </span>
               <span className="popup-mode-copy">
-                <span className="popup-mode-title">Save to Existing Notebook</span>
+                <span className="popup-mode-title">Add to Existing Element</span>
               </span>
               <span className="popup-mode-check">
                 {mode === 'existing' ? <Check size={14} aria-hidden="true" /> : null}
@@ -689,7 +701,7 @@ export function PopupApp() {
 
           {mode === 'existing' ? (
             <NotebookPicker
-              notes={projectNotes}
+              notes={canvasNotes}
               value={selectedNoteId}
               onChange={(noteId) => {
                 setSelectedNoteId(noteId);
@@ -728,7 +740,7 @@ export function PopupApp() {
             disabled={!canSave}
             icon={saving ? undefined : <Save size={15} />}
           >
-            {mode === 'existing' ? 'Save to Existing Notebook' : 'Create New Notebook'}
+            {mode === 'existing' ? 'Add to Existing Element' : 'Create New Element'}
           </Button>
         </div>
       </footer>

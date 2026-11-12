@@ -22,6 +22,7 @@ import { ActionMenu } from './ActionMenu';
 import { EmptyState } from './EmptyState';
 
 export type NoteMenuAction = 'rename' | 'move' | 'delete';
+export type CanvasMenuAction = 'delete';
 
 interface SidebarProps {
   notes: Note[];
@@ -35,6 +36,7 @@ interface SidebarProps {
   onCreateCanvas: () => void;
   onOpenCanvas: (canvasId: string) => void;
   onOpenNote: (noteId: string) => void;
+  onCanvasAction: (canvasId: string, action: CanvasMenuAction) => void;
   onNoteAction: (noteId: string, action: NoteMenuAction) => void;
 }
 
@@ -50,6 +52,7 @@ export function Sidebar({
   onCreateCanvas,
   onOpenCanvas,
   onOpenNote,
+  onCanvasAction,
   onNoteAction,
 }: SidebarProps) {
   const [collapsedCanvases, setCollapsedCanvases] = useState<Set<string>>(new Set());
@@ -161,6 +164,19 @@ export function Sidebar({
                     </span>
                     <span className="project-count">{canvasElements.length}</span>
                   </button>
+                  <div className="canvas-row-actions">
+                    <ActionMenu
+                      label={`Actions for ${canvas.name}`}
+                      items={[
+                        {
+                          label: 'Delete canvas',
+                          icon: Trash2,
+                          danger: true,
+                          onSelect: () => onCanvasAction(canvas.id, 'delete'),
+                        },
+                      ]}
+                    />
+                  </div>
                 </div>
 
                 {!collapsed ? (

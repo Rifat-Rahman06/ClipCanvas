@@ -1,5 +1,5 @@
 import { normalizeCapturedText } from './utils';
-import { plainTextToHtml } from './richText';
+import { markdownToHtml } from './richText';
 
 export interface CapturedInsertion {
   /** The exact text to hand to the textarea's native insertion command. */
@@ -9,15 +9,21 @@ export interface CapturedInsertion {
 }
 
 /**
- * Converts a captured passage into editor HTML while keeping paragraph breaks
- * and removing only outer blank lines and accidental trailing spaces.
+ * Converts a captured passage into editor HTML while keeping paragraph breaks,
+ * lists, headings, and inline formatting, and removing only outer blank lines
+ * and accidental trailing spaces.
+ *
+ * Page selections arrive as Markdown (`selectionToMarkdown`), so the Markdown
+ * renderer is the correct converter here. The previous plain-text path wrapped
+ * every line in one paragraph with `<br>`, which turned a copied bullet list
+ * into a single paragraph of literal "-" characters.
  */
 export function capturedTextToHtml(value: string): string {
   const normalized = normalizeCapturedText(value)
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-  return plainTextToHtml(normalized);
+  return markdownToHtml(normalized);
 }
 
 /**

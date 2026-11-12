@@ -42,7 +42,7 @@ Requires Chrome/Edge 116 or newer (`sidePanel` API).
 
 - Select text on a regular webpage, then right-click the selection and choose **Save Selection to ClipCanvas**.
 - A dedicated **Save Selection** popup opens with the passage pre-filled. It never pulls the side panel open.
-- Edit the passage, choose or create a project, then save it into an existing element or create a new one.
+- Edit the passage, choose or create a canvas, then add it to an existing element or create a new one.
 - Page formatting is converted to Markdown so headings, lists, emphasis, quotes, code, and tables keep their structure. Links are kept as plain text.
 - The toolbar icon opens the notebook side panel only. It never starts a capture.
 
@@ -59,11 +59,12 @@ Requires Chrome/Edge 116 or newer (`sidePanel` API).
 ### Writing
 
 - The rich-text editor supports headings, emphasis, lists, quotes, code, and other standard formatting.
-- Use the selected-element toolbar for bold text, bullet lists, copying, inserting page text, and deleting the element.
+- Use the selected-element toolbar for bold text, bullet lists, copying, downloading the element as a TXT file, inserting page text, and deleting the element.
 - Elements show a rendered preview when they are not being edited.
 - Changes autosave after a configurable pause and flush when editing ends.
-- The **insert selected text** action appends the current browser selection to the active element while preserving its formatting.
+- The **insert selected text** action appends the current browser selection to the active element while preserving its formatting, including lists and headings.
 - Copying an element writes both rich HTML and plain text to the clipboard when the browser supports it.
+- **Download as TXT** saves the element's text with a Save As dialog so you can choose the destination.
 
 ### Search
 
@@ -74,9 +75,9 @@ Requires Chrome/Edge 116 or newer (`sidePanel` API).
 ### Organize
 
 - The sidebar lists canvases and the elements inside each canvas.
-- New canvases can be created from the sidebar, Home view, or canvas tabs.
+- New canvases can be created from the sidebar, Home view, or canvas tabs, and deleted from the sidebar menu.
 - Elements can be renamed, moved to another canvas, or deleted from their menus and toolbar.
-- Projects group captured material. The Save Selection popup lets you choose an existing project or create a new one.
+- The Save Selection popup uses the same canvas names as the side panel, so captures always land in the canvas you expect.
 
 ### Settings
 
@@ -116,7 +117,7 @@ ClipCanvas requests persistent browser storage when it starts. Notebook content 
 | `sidePanel` | Hosts the notebook UI. |
 | `contextMenus` | Adds the “Save Selection to ClipCanvas” item. |
 | `storage` | Saves workspace layout and transient capture data. |
-| `downloads` | JSON export and pre-replace safety backups. |
+| `downloads` | JSON export, TXT element downloads, and pre-replace safety backups. |
 | `unlimitedStorage` | Keeps large notebooks safe from quota eviction. |
 | `activeTab`, `scripting`, `tabs` | Read the current selection and check the active page URL. |
 | Host access (`http`, `https`, `file`) | Reads selections on ordinary pages and, when needed, inside frames. |

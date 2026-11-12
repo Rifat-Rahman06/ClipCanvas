@@ -104,6 +104,8 @@ export function NoteCard({
   const insertAtEndRef = useRef(true);
   const editingRef = useRef(editing);
   editingRef.current = editing;
+  const activeRef = useRef(active);
+  activeRef.current = active;
 
   const clearDiscardTimer = useCallback(() => {
     if (discardTimerRef.current === null) return;
@@ -164,17 +166,20 @@ export function NoteCard({
       clearDiscardTimer();
       return;
     }
-    if (hasBeenEditingRef.current) scheduleDiscard(0);
-  }, [clearDiscardTimer, editing, scheduleDiscard]);
+    // Only discard an untouched element once it is no longer selected. Losing
+    // focus is not enough: switching to the page to select text for insertion
+    // blurs the editor while the element is still the one being edited.
+    if (hasBeenEditingRef.current && !active) scheduleDiscard(0);
+  }, [active, clearDiscardTimer, editing, scheduleDiscard]);
 
   const handleEditorBlur = useCallback(() => {
-    scheduleDiscard(180);
+    if (!activeRef.current) scheduleDiscard(180);
     // A stray focus change (clicking the element's padding, the React Flow
     // node wrapper gaining focus, the window losing OS focus, ...) must not
     // silently end the caret session. If editing is still active and focus did
     // not move to another control, put it back into the document.
     window.setTimeout(() => {
-      if (!editingRef.current) return;
+      if (!editingRef.current || !activeRef.current) return;
       const active = document.activeElement;
       if (active instanceof Element) {
         if (active.closest('.note-card, .note-anchored-toolbar')) return;

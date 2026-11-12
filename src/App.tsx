@@ -43,7 +43,9 @@ export default function App() {
     noteId: string;
     action: NoteMenuAction;
   } | null>(null);
+  const [canvasToDeleteId, setCanvasToDeleteId] = useState<string | null>(null);
   const [deletingNote, setDeletingNote] = useState(false);
+  const [deletingCanvas, setDeletingCanvas] = useState(false);
   const [creatingNote, setCreatingNote] = useState(false);
   const creatingNoteRef = useRef(false);
   const creatingEmptyNoteRef = useRef(false);
@@ -92,6 +94,9 @@ export default function App() {
   }, [notes, savingNoteIds]);
   const activeNoteForAction = noteAction
     ? notes.find((note) => note.id === noteAction.noteId) ?? null
+    : null;
+  const canvasToDelete = canvasToDeleteId
+    ? canvases.find((canvas) => canvas.id === canvasToDeleteId) ?? null
     : null;
 
   const noteCounts = useMemo(() => {
@@ -483,6 +488,27 @@ export default function App() {
     }
   };
 
+  const handleDeleteCanvas = async () => {
+    if (!canvasToDelete || deletingCanvas) return;
+    setDeletingCanvas(true);
+    try {
+      const result = await notebook.deleteCanvas(canvasToDelete.id);
+      workspace.closeTab(canvasToDelete.id);
+      if (workspace.activeNoteId && result.deletedNoteIds.includes(workspace.activeNoteId)) {
+        workspace.clearActiveNote();
+      }
+      notify({ kind: 'success', message: `Canvas “${canvasToDelete.name}” deleted.` });
+      setCanvasToDeleteId(null);
+    } catch (error) {
+      notify({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'The canvas could not be deleted.',
+      });
+    } finally {
+      setDeletingCanvas(false);
+    }
+  };
+
   const handleImported = (_result: ImportResult) => {
     if (workspace.openCanvasIds.length === 0) workspace.returnToCanvases();
   };
@@ -567,6 +593,9 @@ export default function App() {
           onCreateCanvas={handleNewCanvas}
           onOpenCanvas={openCanvas}
           onOpenNote={openNote}
+          onCanvasAction={(canvasId, action) => {
+            if (action === 'delete') setCanvasToDeleteId(canvasId);
+          }}
           onNoteAction={handleNoteAction}
         />
       ) : null}
@@ -662,6 +691,26 @@ export default function App() {
           if (!deletingNote) setNoteAction(null);
         }}
         onConfirm={() => void handleDeleteNote()}
+      />
+
+      <ConfirmDialog
+        open={Boolean(canvasToDelete)}
+        title={canvasToDelete ? `Delete canvas “${canvasToDelete.name}”?` : 'Delete canvas?'}
+        description={
+          canvasToDelete
+            ? `This permanently removes the canvas and its ${
+                noteCounts.get(canvasToDelete.id) ?? 0
+              } ${
+                (noteCounts.get(canvasToDelete.id) ?? 0) === 1 ? 'element' : 'elements'
+              }, including any images stored with them. This cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete canvas"
+        busy={deletingCanvas}
+        onClose={() => {
+          if (!deletingCanvas) setCanvasToDeleteId(null);
+        }}
+        onConfirm={() => void handleDeleteCanvas()}
       />
 
       <MoveNoteDialog

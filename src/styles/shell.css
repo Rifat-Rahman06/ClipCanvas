@@ -272,7 +272,8 @@
 }
 
 .project-actions,
-.note-row-actions {
+.note-row-actions,
+.canvas-row-actions {
   display: flex;
   align-items: center;
   opacity: 0;
@@ -282,13 +283,16 @@
 .project-row:hover .project-actions,
 .project-row:focus-within .project-actions,
 .note-row:hover .note-row-actions,
-.note-row:focus-within .note-row-actions {
+.note-row:focus-within .note-row-actions,
+.sidebar-canvas-row:hover .canvas-row-actions,
+.sidebar-canvas-row:focus-within .canvas-row-actions {
   opacity: 1;
 }
 
 @media (hover: none) {
   .project-actions,
-  .note-row-actions {
+  .note-row-actions,
+  .canvas-row-actions {
     opacity: 1;
   }
 }
@@ -385,6 +389,21 @@
 
 .sidebar-canvas-row .project-count {
   padding-right: 4px;
+}
+
+.canvas-row-actions {
+  flex: 0 0 auto;
+  padding-right: 1px;
+}
+
+.canvas-row-actions .icon-btn {
+  width: 23px;
+  height: 23px;
+  color: var(--ink-400);
+}
+
+.canvas-row-actions .menu-anchor {
+  display: flex;
 }
 
 .canvas-row {

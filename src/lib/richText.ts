@@ -127,14 +127,88 @@ export function markdownToHtml(markdown: string): string {
 }
 
 /**
- * Converts literal plain text to editor HTML. Unlike Markdown conversion, every
- * newline becomes a hard break, so copying and pasting a plain-text selection
- * preserves its exact line structure.
+ * Converts literal plain text to editor HTML. Blank lines separate paragraphs,
+ * single newlines stay hard breaks, and runs of bullet/numbered lines become
+ * real lists. Clipboard data without an HTML flavour often arrives this way;
+ * wrapping everything in one paragraph made copied bullet lists lose their
+ * structure.
  */
 export function plainTextToHtml(value: string): string {
   const normalized = value.replace(/\r\n?/g, '\n');
   if (!normalized.trim()) return '';
-  return `<p>${escapeHtml(normalized).replace(/\n/g, '<br>')}</p>`;
+
+  const html: string[] = [];
+  let paragraph: string[] = [];
+  let listType: 'ul' | 'ol' | null = null;
+  let listStart = 1;
+  let listItems: string[] = [];
+
+  const flushParagraph = () => {
+    if (paragraph.length === 0) return;
+    const content = paragraph.join('\n').replace(/^\n+|\n+$/g, '');
+    paragraph = [];
+    if (!content.trim()) return;
+    html.push(`<p>${escapeHtml(content).replace(/\n/g, '<br>')}</p>`);
+  };
+
+  const flushList = () => {
+    if (!listType || listItems.length === 0) return;
+    const attrs = listType === 'ol' && listStart !== 1 ? ` start="${listStart}"` : '';
+    const items = listItems
+      .map((item) => `<li>${escapeHtml(item).replace(/\n/g, '<br>')}</li>`)
+      .join('');
+    html.push(`<${listType}${attrs}>${items}</${listType}>`);
+    listType = null;
+    listStart = 1;
+    listItems = [];
+  };
+
+  for (const line of normalized.split('\n')) {
+    if (!line.trim()) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const bullet = /^\s{0,3}[-*+•]\s+(.*)$/.exec(line);
+    const numbered = /^\s{0,3}(\d{1,9})[.)]\s+(.*)$/.exec(line);
+
+    if (bullet) {
+      flushParagraph();
+      if (listType !== 'ul') {
+        flushList();
+        listType = 'ul';
+      }
+      listItems.push(bullet[1]);
+      continue;
+    }
+
+    if (numbered) {
+      flushParagraph();
+      const start = Number.parseInt(numbered[1], 10);
+      if (listType !== 'ol') {
+        flushList();
+        listType = 'ol';
+        listStart = start;
+      }
+      listItems.push(numbered[2]);
+      continue;
+    }
+
+    // An indented line directly under a list item is a wrapped line of that
+    // item, not a new paragraph.
+    if (listType && listItems.length > 0 && /^\s{2,}\S/.test(line)) {
+      listItems[listItems.length - 1] += `\n${line.trim()}`;
+      continue;
+    }
+
+    flushList();
+    paragraph.push(line);
+  }
+
+  flushParagraph();
+  flushList();
+  return html.join('');
 }
 
 /** Flattens rich note HTML into searchable, single-line plain text. */

@@ -1302,10 +1302,12 @@ function CanvasSurface({
     pressOriginRef.current = null;
     // Selecting text inside a note and releasing the pointer over the empty
     // pane dispatches a click on the pane. That is still part of the text
-    // selection gesture, not a request to deselect the element.
-    const selection = window.getSelection();
-    const selectingText = Boolean(selection && selection.rangeCount > 0 && !selection.isCollapsed);
-    if (pressOrigin?.insideNote || selectingText) return;
+    // selection gesture, not a request to deselect the element. The press
+    // origin, not the current DOM selection, is what identifies that gesture:
+    // an old non-collapsed editor selection survives a click on the pane (the
+    // pane is not selectable), and treating it as an active selection used to
+    // stop physical mouse clicks from ever leaving the editor.
+    if (pressOrigin?.insideNote) return;
     // Precision touchpads can finish a pan with a stray click. The viewport
     // just moved, so that click belongs to the navigation gesture, not to an
     // intentional request to leave the editor.
@@ -1314,6 +1316,10 @@ function CanvasSurface({
     clearEditZoomTimer();
     setEditingNoteId(null);
     setResizingNoteId(null);
+    // Drop the editor's stale highlight as well, so the deselected element no
+    // longer looks focused.
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) selection.removeAllRanges();
     onDeselectNote();
   }, [clearEditZoomTimer, onDeselectNote]);
 

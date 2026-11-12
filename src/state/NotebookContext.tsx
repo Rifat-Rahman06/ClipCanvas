@@ -75,9 +75,12 @@ export function NotebookProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const loadSequence = useRef(0);
+  const refreshSequence = useRef(0);
 
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
     const dataset = await getDataset();
+    if (sequence !== refreshSequence.current) return dataset;
     setData(dataset);
     return dataset;
   }, []);
@@ -102,6 +105,22 @@ export function NotebookProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    // The capture popup and the side panel are separate documents that share
+    // one IndexedDB database. Re-read when this window regains focus so a
+    // selection saved from the popup shows up without reloading the extension.
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'hidden') return;
+      void refresh().catch(() => undefined);
+    };
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [refresh]);
 
   const retryLoad = useCallback(() => {
     void load();
