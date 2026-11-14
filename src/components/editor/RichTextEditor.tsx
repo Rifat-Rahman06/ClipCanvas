@@ -1,13 +1,38 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { EditorContent, useEditor, type Editor } from '@tiptap/react';
+import { EditorContent, Mark, mergeAttributes, useEditor, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
+import {
+  Table,
+  TableCell,
+  TableHeader,
+  TableRow,
+} from '@tiptap/extension-table';
 import type { EditorProps, EditorView } from '@tiptap/pm/view';
 import { createAttachment } from '../../services/db/attachments';
 import { compressImage } from '../../lib/images';
-import { textFromHtml } from '../../lib/richText';
+import {
+  clipboardToNoteHtml,
+  isStructuredClipboard,
+  textFromHtml,
+} from '../../lib/richText';
 import { useToast } from '../../state/ToastContext';
 import { AttachmentImage } from './AttachmentImage';
+
+/**
+ * Stores highlights as a plain `<mark>` element. The visible color comes from
+ * the `--note-highlight` custom property, so changing the color in Settings
+ * recolors every existing note without rewriting stored HTML.
+ */
+const HighlightMark = Mark.create({
+  name: 'highlight',
+  parseHTML() {
+    return [{ tag: 'mark' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['mark', mergeAttributes(HTMLAttributes), 0];
+  },
+});
 
 interface RichTextEditorProps {
   noteId: string;
@@ -48,6 +73,9 @@ export function RichTextEditor({
   const imageTransferRef = useRef<
     (view: EditorView, data: DataTransfer | null, position: number) => boolean
   >(() => false);
+  const structuredPasteRef = useRef<
+    (view: EditorView, data: DataTransfer | null) => boolean
+  >(() => false);
 
   // Tiptap compares these options on every render. Re-creating extension
   // instances or editor props forces it to replace the view props and call
@@ -58,7 +86,15 @@ export function RichTextEditor({
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
       }),
+      Table.configure({
+        resizable: false,
+        HTMLAttributes: { class: 'note-table' },
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
       Placeholder.configure({ placeholder }),
+      HighlightMark,
       AttachmentImage,
     ],
     [placeholder],
@@ -77,7 +113,8 @@ export function RichTextEditor({
       // panning the canvas viewport instead of moving the edited node.
       handleScrollToSelection: () => true,
       handlePaste: (view, event) =>
-        imageTransferRef.current(view, event.clipboardData, view.state.selection.from),
+        imageTransferRef.current(view, event.clipboardData, view.state.selection.from) ||
+        structuredPasteRef.current(view, event.clipboardData),
       handleDrop: (view, event) => {
         const position =
           view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ??
@@ -115,6 +152,25 @@ export function RichTextEditor({
     const files = [...data.files].filter((file) => file.type.startsWith('image/'));
     if (files.length === 0) return false;
     void insertImages(view, files, position);
+    return true;
+  };
+
+  structuredPasteRef.current = (view, data) => {
+    if (!editor || !editableRef.current || !data) return false;
+    const html = data.getData('text/html');
+    const text = data.getData('text/plain');
+    // Only take over pastes that carry block structure. A copied word, link,
+    // or phrase keeps the browser's native insertion so the caret does not
+    // jump and inline marks stay intact.
+    if (!isStructuredClipboard(html, text)) return false;
+    const normalized = clipboardToNoteHtml({ html, text });
+    if (!normalized.trim()) return false;
+    const { from, to } = view.state.selection;
+    editor
+      .chain()
+      .focus(undefined, { scrollIntoView: false })
+      .insertContentAt({ from, to }, normalized)
+      .run();
     return true;
   };
 

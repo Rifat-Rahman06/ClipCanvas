@@ -16,7 +16,13 @@ import type {
 } from '../../types';
 import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM, SCHEMA_VERSION } from '../../types';
 import { createId } from '../../lib/utils';
-import { markdownToHtml, textFromHtml } from '../../lib/richText';
+import {
+  htmlHasBlockStructure,
+  htmlToMarkdown,
+  looksLikeBlockMarkdown,
+  markdownToHtml,
+  textFromHtml,
+} from '../../lib/richText';
 import { defaultSettings } from './settings';
 
 export const DB_NAME = 'clipcanvas-notebook';
@@ -226,22 +232,40 @@ async function migrateLegacyData(db: IDBPDatabase<ClipCanvasDB>): Promise<void> 
     for (const [index, note] of group.entries()) {
       const contentHtml = note.contentHtml ?? markdownToHtml(note.content ?? '');
       const contentText = note.contentText ?? (textFromHtml(contentHtml) || note.content || '');
+      // Older notes stored plain text in `content` while the rich HTML kept the
+      // real structure. Recover the Markdown source once so edit mode shows
+      // tables, lists, and headings instead of a flattened paragraph.
+      const content =
+        note.kind === 'image'
+          ? ''
+          : note.content && note.content.trim()
+            ? htmlHasBlockStructure(contentHtml) && !looksLikeBlockMarkdown(note.content)
+              ? htmlToMarkdown(contentHtml)
+              : note.content
+            : contentHtml
+              ? htmlToMarkdown(contentHtml)
+              : '';
+      const displayMode = note.displayMode === 'preview' ? 'preview' : 'edit';
       const layout = note.layout ?? defaultLayout(index);
       const canvasId =
         note.canvasId && validCanvasIds.has(note.canvasId)
           ? note.canvasId
           : fallbackCanvasId;
       if (
+        content !== note.content ||
         contentHtml !== note.contentHtml ||
         contentText !== note.contentText ||
+        displayMode !== note.displayMode ||
         !note.layout ||
         canvasId !== note.canvasId
       ) {
         await noteStore.put({
           ...note,
           canvasId,
+          content,
           contentHtml,
           contentText,
+          displayMode,
           layout,
         });
       }

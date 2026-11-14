@@ -58,13 +58,15 @@ Requires Chrome/Edge 116 or newer (`sidePanel` API).
 
 ### Writing
 
-- The rich-text editor supports headings, emphasis, lists, quotes, code, and other standard formatting.
-- Use the selected-element toolbar for bold text, bullet lists, copying, downloading the element as a TXT file, inserting page text, and deleting the element.
-- Elements show a rendered preview when they are not being edited.
+- Every element stores its content as **Markdown**, the canonical source. Edit mode shows that source verbatim so you can type syntax directly; Preview mode renders it with a rich editor for in-place edits (for example, changing a value inside a table).
+- Use the selected-element toolbar for bold text, highlights, bullet lists (Preview mode only), switching the element between Markdown edit and rendered preview, copying, downloading the element as a Markdown file, inserting page text, and deleting the element.
+- The mode toggle shows the element's current mode: a pen for **Markdown edit** and an open book for **rendered preview**. Each element remembers its own mode.
+- Elements that are not being edited stay rendered on the canvas in both modes.
+- Pasting Markdown or rich HTML from a page or ChatGPT keeps its structure: tables stay tables, headings stay headings, and lists stay lists. A ChatGPT selection copied with **Ctrl+C** is converted from its rendered HTML back into Markdown, so it arrives without the extra blank lines and stray spacing.
 - Changes autosave after a configurable pause and flush when editing ends.
-- The **insert selected text** action appends the current browser selection to the active element while preserving its formatting, including lists and headings.
-- Copying an element writes both rich HTML and plain text to the clipboard when the browser supports it.
-- **Download as TXT** saves the element's text with a Save As dialog so you can choose the destination.
+- The **insert selected text** action appends the current browser selection to the active element while preserving its formatting, including lists, headings, and tables.
+- **Copy** always writes the element's Markdown as plain text (and rendered HTML as the rich flavour when supported), so pasting into another element, editor, or chat keeps the syntax.
+- **Download** saves the element as a `.md` file with a Save As dialog so you can choose the destination.
 
 ### Search
 
@@ -82,6 +84,7 @@ Requires Chrome/Edge 116 or newer (`sidePanel` API).
 ### Settings
 
 - **Editor text size** — writing and preview size.
+- **Highlight color** — background used by the toolbar's highlight button; existing highlights recolor immediately.
 - **Autosave delay** — how long ClipCanvas waits after typing stops before saving.
 - **Single-click zoom strength** — scales the automatic zoom used when opening an element.
 - **Touchpad zoom sensitivity** — scales pinch gestures inside ClipCanvas.
@@ -117,7 +120,7 @@ ClipCanvas requests persistent browser storage when it starts. Notebook content 
 | `sidePanel` | Hosts the notebook UI. |
 | `contextMenus` | Adds the “Save Selection to ClipCanvas” item. |
 | `storage` | Saves workspace layout and transient capture data. |
-| `downloads` | JSON export, TXT element downloads, and pre-replace safety backups. |
+| `downloads` | JSON export, Markdown element downloads, and pre-replace safety backups. |
 | `unlimitedStorage` | Keeps large notebooks safe from quota eviction. |
 | `activeTab`, `scripting`, `tabs` | Read the current selection and check the active page URL. |
 | Host access (`http`, `https`, `file`) | Reads selections on ordinary pages and, when needed, inside frames. |

@@ -18,7 +18,7 @@ import {
   DEFAULT_NOTE_WIDTH_DEFAULT,
 } from '../../types';
 import { createId, nowIso } from '../../lib/utils';
-import { markdownToHtml, sanitizeNoteHtml, textFromHtml } from '../../lib/richText';
+import { htmlToMarkdown, markdownToHtml, sanitizeNoteHtml, textFromHtml } from '../../lib/richText';
 import { getDb, SETTINGS_KEY, type ClipCanvasDB } from './database';
 import { revokeAllAttachmentUrls, revokeAttachmentUrls } from './attachments';
 import { defaultSettings, normalizeSettings } from './settings';
@@ -225,6 +225,7 @@ function buildNote(
     content,
     contentHtml: cleanContent(rendered.contentHtml),
     contentText: cleanContent(rendered.contentText),
+    displayMode: input.displayMode === 'preview' ? 'preview' : 'edit',
     layout: { ...layout, widthLocked: false },
     ...(input.browserCapture === true ? { browserCapture: true } : {}),
     ...(input.hasUnseenUpdate === true ? { hasUnseenUpdate: true } : {}),
@@ -266,6 +267,7 @@ function cleanStoredNote(note: Note): Note {
     content,
     contentHtml: rendered.contentHtml,
     contentText: rendered.contentText,
+    displayMode: note.displayMode === 'preview' ? 'preview' : 'edit',
     layout: cleanLayout(note.layout),
     ...(note.browserCapture === true ? { browserCapture: true } : {}),
     ...(note.hasUnseenUpdate === true ? { hasUnseenUpdate: true } : {}),
@@ -647,7 +649,9 @@ export async function updateNote(id: string, patch: NotePatch): Promise<Note> {
         ? textFromHtml(contentHtml) || content
         : existing.contentText ?? (textFromHtml(contentHtml) || content);
   if (patch.contentHtml !== undefined && patch.content === undefined) {
-    content = cleanContent(contentText);
+    // Rich edits (preview mode) are converted back into the canonical Markdown
+    // source instead of being flattened to plain text.
+    content = cleanContent(htmlToMarkdown(contentHtml));
   }
 
   const projectChanged = projectId !== existing.projectId;
@@ -677,6 +681,14 @@ export async function updateNote(id: string, patch: NotePatch): Promise<Note> {
     content,
     contentHtml,
     contentText,
+    displayMode:
+      patch.displayMode === undefined
+        ? existing.displayMode === 'preview'
+          ? 'preview'
+          : 'edit'
+        : patch.displayMode === 'preview'
+          ? 'preview'
+          : 'edit',
     layout: cleanLayout(layout),
     ...(patch.browserCapture === undefined
       ? existing.browserCapture === true

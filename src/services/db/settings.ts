@@ -9,6 +9,7 @@ import {
   EDITOR_FONT_SIZE_DEFAULT,
   EDITOR_FONT_SIZE_MAX,
   EDITOR_FONT_SIZE_MIN,
+  NOTE_HIGHLIGHT_COLOR_DEFAULT,
   SCHEMA_VERSION,
   SINGLE_CLICK_ZOOM_DEFAULT,
   SINGLE_CLICK_ZOOM_MAX,
@@ -68,6 +69,21 @@ function normalizeDefaultNoteWidth(value: unknown): number {
   );
 }
 
+function normalizeHighlightColor(value: unknown): string {
+  if (typeof value !== 'string') return NOTE_HIGHLIGHT_COLOR_DEFAULT;
+  const trimmed = value.trim();
+  if (/^#[0-9a-f]{6}$/i.test(trimmed)) return trimmed.toLowerCase();
+  if (/^#[0-9a-f]{3}$/i.test(trimmed)) {
+    return `#${trimmed
+      .slice(1)
+      .split('')
+      .map((char) => char + char)
+      .join('')
+      .toLowerCase()}`;
+  }
+  return NOTE_HIGHLIGHT_COLOR_DEFAULT;
+}
+
 export function defaultSettings(): AppSettings {
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -79,6 +95,7 @@ export function defaultSettings(): AppSettings {
     singleClickZoom: SINGLE_CLICK_ZOOM_DEFAULT,
     touchpadZoomSensitivity: TOUCHPAD_ZOOM_SENSITIVITY_DEFAULT,
     defaultNoteWidth: DEFAULT_NOTE_WIDTH_DEFAULT,
+    highlightColor: NOTE_HIGHLIGHT_COLOR_DEFAULT,
     sidebarCollapsed: false,
   };
 }
@@ -112,6 +129,7 @@ export function normalizeSettings(
       value.touchpadZoomSensitivity,
     ),
     defaultNoteWidth: normalizeDefaultNoteWidth(value.defaultNoteWidth),
+    highlightColor: normalizeHighlightColor(value.highlightColor),
     sidebarCollapsed: value.sidebarCollapsed === true,
   };
 }

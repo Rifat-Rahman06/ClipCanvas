@@ -12,6 +12,8 @@ export const SINGLE_CLICK_ZOOM_DEFAULT = 1;
 export const DEFAULT_NOTE_WIDTH_MIN = 280;
 export const DEFAULT_NOTE_WIDTH_MAX = 1200;
 export const DEFAULT_NOTE_WIDTH_DEFAULT = 430;
+/** Background used by the editor's highlight button. */
+export const NOTE_HIGHLIGHT_COLOR_DEFAULT = '#f6e27a';
 /** How long typing in a note waits before its edit is persisted. */
 export const AUTOSAVE_DELAY_SECONDS_MIN = 0.5;
 export const AUTOSAVE_DELAY_SECONDS_MAX = 60;
@@ -27,6 +29,14 @@ export const TOUCHPAD_ZOOM_SENSITIVITY_DEFAULT = 1;
 
 export type EditorMode = 'write' | 'preview';
 export type ImportMode = 'merge' | 'replace';
+
+/**
+ * Which surface opens when an element is activated. `edit` shows the note's
+ * Markdown source, `preview` shows the rendered rich editor. While an element
+ * is idle on the canvas it is always rendered.
+ */
+export type NoteDisplayMode = 'edit' | 'preview';
+export const NOTE_DISPLAY_MODE_DEFAULT: NoteDisplayMode = 'edit';
 
 export interface CanvasViewport {
   x: number;
@@ -66,6 +76,17 @@ export interface Project {
 
 export type NoteKind = 'note' | 'image';
 
+/**
+ * The latest in-memory representation of a note. While an edit session is
+ * active the saved note is behind the editor, so actions such as copy must read
+ * this snapshot instead.
+ */
+export interface NoteContentSnapshot {
+  markdown: string;
+  html: string;
+  text: string;
+}
+
 export interface Note {
   id: string;
   projectId: string;
@@ -73,12 +94,20 @@ export interface Note {
   title: string;
   /** Canvas images share note storage but hide note chrome until selected. */
   kind?: NoteKind;
-  /** Legacy Markdown/plain-text fallback kept for migration and portability. */
+  /**
+   * Canonical Markdown source. Edit mode shows and edits this verbatim, and
+   * every other representation is derived from it.
+   */
   content: string;
-  /** Rich editor HTML. */
+  /** Rendered cache of `content`, used by the preview and the rich editor. */
   contentHtml?: string;
   /** Plain text used by search, snippets, and title fallback. */
   contentText?: string;
+  /**
+   * Per-element canvas rendering preference. New elements start in `edit`
+   * mode; `preview` shows the source-faithful capture instead.
+   */
+  displayMode?: NoteDisplayMode;
   /** Position and size on the canvas. */
   layout?: NoteLayout;
   /**
@@ -129,6 +158,8 @@ export interface AppSettings {
   touchpadZoomSensitivity: number;
   /** Width used by newly created, not-yet-resized elements. */
   defaultNoteWidth: number;
+  /** Background color applied to highlighted text in every element. */
+  highlightColor: string;
   sidebarCollapsed: boolean;
 }
 
@@ -202,6 +233,7 @@ export interface NoteInput {
   content?: string;
   contentHtml?: string;
   contentText?: string;
+  displayMode?: NoteDisplayMode;
   layout?: NoteLayout;
   browserCapture?: boolean;
   hasUnseenUpdate?: boolean;
@@ -216,6 +248,7 @@ export interface NotePatch {
   content?: string;
   contentHtml?: string;
   contentText?: string;
+  displayMode?: NoteDisplayMode;
   layout?: NoteLayout;
   browserCapture?: boolean;
   hasUnseenUpdate?: boolean;

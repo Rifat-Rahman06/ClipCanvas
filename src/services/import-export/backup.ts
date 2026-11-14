@@ -20,7 +20,7 @@ import {
   SCHEMA_VERSION,
 } from '../../types';
 import { nowIso } from '../../lib/utils';
-import { markdownToHtml, sanitizeNoteHtml, textFromHtml } from '../../lib/richText';
+import { htmlToMarkdown, markdownToHtml, sanitizeNoteHtml, textFromHtml } from '../../lib/richText';
 import { normalizeSettings } from '../db/settings';
 import { DEFAULT_CANVAS_NAME, defaultCanvasViewport, LIMITS } from '../db/repository';
 import { getBackupAttachments } from '../db/attachments';
@@ -163,6 +163,7 @@ export function createBackup(
         content: note.content,
         contentHtml: note.contentHtml,
         contentText: note.contentText,
+        displayMode: note.displayMode === 'preview' ? 'preview' : 'edit',
         layout: note.layout,
         ...(note.browserCapture === true ? { browserCapture: true } : {}),
         ...(note.hasUnseenUpdate === true ? { hasUnseenUpdate: true } : {}),
@@ -385,7 +386,7 @@ export function validateBackup(raw: unknown): ValidatedBackup {
             max: LIMITS.noteTitle,
             allowEmpty: true,
           });
-    const content =
+    let content =
       rawNote.content == null
         ? ''
         : asString(rawNote.content, `Note #${index + 1} content`, issues, {
@@ -403,6 +404,11 @@ export function validateBackup(raw: unknown): ValidatedBackup {
               }),
             )
           : markdownToHtml(content);
+    // Backups written before Markdown became the canonical source may only
+    // carry rich HTML. Recover the source so edit mode has something to show.
+    if (!content && rawNote.kind !== 'image' && contentHtml) {
+      content = htmlToMarkdown(contentHtml);
+    }
     const contentText =
       typeof rawNote.contentText === 'string'
         ? asString(rawNote.contentText, `Note #${index + 1} text`, issues, {
@@ -420,6 +426,7 @@ export function validateBackup(raw: unknown): ValidatedBackup {
       content,
       contentHtml,
       contentText,
+      displayMode: rawNote.displayMode === 'preview' ? 'preview' : 'edit',
       layout: readLayout(rawNote.layout),
       ...(rawNote.browserCapture === true ? { browserCapture: true } : {}),
       ...(rawNote.hasUnseenUpdate === true ? { hasUnseenUpdate: true } : {}),

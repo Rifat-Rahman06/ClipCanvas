@@ -48,6 +48,7 @@ import {
   type AppSettings,
   type Canvas,
   type Note,
+  type NoteContentSnapshot,
   type NoteInsertion,
   type NoteLayout,
   type NotePatch,
@@ -87,6 +88,14 @@ const FOCUS_ZOOM_MAX = CANVAS_MAX_ZOOM;
 const TOOLBAR_GAP = 8;
 const TOOLBAR_WIDTH = 36;
 const TOOLBAR_HALF_HEIGHT = 92;
+
+function applyFormatAction(editor: Editor, action: NoteFormatAction): void {
+  const focusOptions = { scrollIntoView: false };
+  const chain = editor.chain().focus(undefined, focusOptions);
+  if (action === 'bold') chain.toggleBold().run();
+  else if (action === 'highlight') chain.toggleMark('highlight').run();
+  else chain.toggleBulletList().run();
+}
 
 const SEARCH_HIGHLIGHT_ALL = 'clipcanvas-canvas-search-all';
 const SEARCH_HIGHLIGHT_CURRENT = 'clipcanvas-canvas-search-current';
@@ -316,8 +325,15 @@ interface NoteNodeData extends Record<string, unknown> {
   onEditorReady: (noteId: string, editor: Editor | null) => void;
   onDiscardEmpty: (noteId: string) => void;
   onFormat: (noteId: string, action: NoteFormatAction) => void;
+  onToggleDisplayMode: (noteId: string) => void;
   onInsertSelection: () => void;
   onLayoutChange: (noteId: string, layout: NoteLayout) => void;
+  /** Latest in-memory content for copy/download while an edit session is open. */
+  getLiveContent: (noteId: string) => NoteContentSnapshot | null;
+  onRegisterLiveContent: (
+    noteId: string,
+    getter: (() => NoteContentSnapshot) | null,
+  ) => void;
 }
 
 type NoteCanvasNode = Node<NoteNodeData, 'note'>;
@@ -441,6 +457,7 @@ function CanvasSurface({
   const editZoomTimerRef = useRef<number | null>(null);
   const handledEditRequestRef = useRef(0);
   const editorsRef = useRef(new Map<string, Editor>());
+  const liveContentRef = useRef(new Map<string, () => NoteContentSnapshot>());
   const pendingFormatRef = useRef<{ noteId: string; action: NoteFormatAction } | null>(null);
   const pendingLayoutsRef = useRef(new Map<string, NoteLayout>());
   const [searchQuery, setSearchQuery] = useState('');
@@ -719,11 +736,7 @@ function CanvasSurface({
 
   const runFormat = useCallback(
     (noteId: string, action: NoteFormatAction) => {
-      const apply = (editor: Editor) => {
-        const focusOptions = { scrollIntoView: false };
-        if (action === 'bold') editor.chain().focus(undefined, focusOptions).toggleBold().run();
-        else editor.chain().focus(undefined, focusOptions).toggleBulletList().run();
-      };
+      const apply = (editor: Editor) => applyFormatAction(editor, action);
       const editor = editorsRef.current.get(noteId);
       if (editor && editingNoteId === noteId) {
         apply(editor);
@@ -755,15 +768,37 @@ function CanvasSurface({
     if (pending && pending.noteId === noteId) {
       pendingFormatRef.current = null;
       window.setTimeout(() => {
-        const focusOptions = { scrollIntoView: false };
-        if (pending.action === 'bold') {
-          editor.chain().focus(undefined, focusOptions).toggleBold().run();
-        } else {
-          editor.chain().focus(undefined, focusOptions).toggleBulletList().run();
-        }
+        applyFormatAction(editor, pending.action);
       }, 0);
     }
   }, []);
+
+  const registerLiveContent = useCallback(
+    (noteId: string, getter: (() => NoteContentSnapshot) | null) => {
+      if (getter) liveContentRef.current.set(noteId, getter);
+      else liveContentRef.current.delete(noteId);
+    },
+    [],
+  );
+
+  const getLiveContent = useCallback((noteId: string): NoteContentSnapshot | null => {
+    return liveContentRef.current.get(noteId)?.() ?? null;
+  }, []);
+
+  const toggleDisplayMode = useCallback(
+    (noteId: string) => {
+      const note = notes.find((item) => item.id === noteId);
+      if (!note) return;
+      const next = note.displayMode === 'preview' ? 'edit' : 'preview';
+      // The mode is stored on the element, so other notes keep their own
+      // choice. Activating the element then opens the matching surface: the
+      // Markdown source in `edit` mode, the rich editor in `preview` mode.
+      void onUpdateNote(noteId, { displayMode: next }).catch(() => {
+        // The note may have been deleted while the toolbar was open.
+      });
+    },
+    [notes, onUpdateNote],
+  );
 
   const handleNoteLayoutChange = useCallback(
     (noteId: string, layout: NoteLayout) => {
@@ -793,7 +828,10 @@ function CanvasSurface({
     onEditorReady: handleEditorReady,
     onDiscardEmptyNote,
     onFormat: runFormat,
+    onToggleDisplayMode: toggleDisplayMode,
     onNoteLayoutChange: handleNoteLayoutChange,
+    getLiveContent,
+    onRegisterLiveContent: registerLiveContent,
   });
   callbacksRef.current = {
     onUpdateNote,
@@ -808,7 +846,10 @@ function CanvasSurface({
     onEditorReady: handleEditorReady,
     onDiscardEmptyNote,
     onFormat: runFormat,
+    onToggleDisplayMode: toggleDisplayMode,
     onNoteLayoutChange: handleNoteLayoutChange,
+    getLiveContent,
+    onRegisterLiveContent: registerLiveContent,
   };
 
   useEffect(() => {
@@ -860,8 +901,11 @@ function CanvasSurface({
           onEditorReady: callbacks.onEditorReady,
           onDiscardEmpty: callbacks.onDiscardEmptyNote,
           onFormat: callbacks.onFormat,
+          onToggleDisplayMode: callbacks.onToggleDisplayMode,
           onInsertSelection: callbacks.onInsertSelection,
           onLayoutChange: callbacks.onNoteLayoutChange,
+          getLiveContent: callbacks.getLiveContent,
+          onRegisterLiveContent: callbacks.onRegisterLiveContent,
         };
         const imageNote = note.kind === 'image';
         const resizing = note.id === resizingNoteId;
@@ -914,6 +958,9 @@ function CanvasSurface({
           previous.data.insertion === data.insertion &&
           previous.data.fontSize === data.fontSize &&
           previous.data.defaultNoteWidth === data.defaultNoteWidth &&
+          // A mode toggle must reach the card even mid-session, otherwise the
+          // surface and the toolbar icon keep showing the old mode.
+          previous.data.note.displayMode === data.note.displayMode &&
           previous.style?.width === style.width &&
           previous.style?.height === style.height;
         if (keepEditingNode) return previous;
@@ -1720,9 +1767,11 @@ function NoteNode({ id, data, width, dragging }: NodeProps<NoteCanvasNode>) {
           <ActiveNoteToolbar
             key={data.note.id}
             note={data.note}
+            getLiveContent={data.getLiveContent}
             onNoteAction={data.onNoteAction}
             onInsertSelection={data.onInsertSelection}
             onFormat={data.onFormat}
+            onToggleDisplayMode={data.onToggleDisplayMode}
           />
         </NodeToolbar>
       ) : null}
@@ -1803,6 +1852,7 @@ function NoteNode({ id, data, width, dragging }: NodeProps<NoteCanvasNode>) {
         onBeginResize={data.onBeginResize}
         onEditorReady={data.onEditorReady}
         onDiscardEmpty={data.onDiscardEmpty}
+        onRegisterLiveContent={data.onRegisterLiveContent}
         onCaretActivity={followCaret}
       />
     </>

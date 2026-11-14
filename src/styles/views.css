@@ -1155,6 +1155,57 @@ mark {
   text-align: right;
 }
 
+.highlight-color-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-sunken);
+}
+
+.highlight-color-control input[type='color'] {
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.highlight-color-control input[type='color']::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.highlight-color-control input[type='color']::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+.highlight-swatches {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.highlight-swatch {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid rgba(31, 37, 31, 0.14);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.highlight-swatch.is-active {
+  box-shadow:
+    0 0 0 2px var(--surface-sunken),
+    0 0 0 3.5px var(--accent);
+}
+
 .about-grid {
   display: grid;
   grid-template-columns: 120px 1fr;

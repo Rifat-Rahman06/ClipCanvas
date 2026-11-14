@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import {
   DEFAULT_NOTE_WIDTH_DEFAULT,
@@ -8,7 +8,7 @@ import {
 } from './types';
 import { classNames, noteDisplayTitle, titleFromSelection } from './lib/utils';
 import { compressImage } from './lib/images';
-import { plainTextToHtml, textFromHtmlWithBreaks } from './lib/richText';
+import { clipboardToNote, textFromHtmlWithBreaks } from './lib/richText';
 import { createAttachment } from './services/db/attachments';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { useWorkspace } from './hooks/useWorkspace';
@@ -393,10 +393,9 @@ export default function App() {
       html?: string,
     ) => {
       if (!activeCanvas) return;
-      const richHtml = html?.trim() ?? '';
-      const content = (text.trim() || textFromHtmlWithBreaks(richHtml)).trim();
-      const contentHtml = richHtml || plainTextToHtml(content);
-      if (!content && !contentHtml) return;
+      const clipped = clipboardToNote({ html: html?.trim() ?? '', text });
+      const contentText = (textFromHtmlWithBreaks(clipped.html) || clipped.markdown).trim();
+      if (!clipped.markdown && !clipped.html) return;
       try {
         const topZ = canvasNotes.reduce(
           (highest, note) => Math.max(highest, note.layout?.zIndex ?? 0),
@@ -406,9 +405,9 @@ export default function App() {
         await notebook.createNote({
           projectId: activeCanvas.projectId,
           canvasId: activeCanvas.id,
-          title: titleFromSelection(content),
-          content,
-          ...(contentHtml ? { contentHtml, contentText: content } : {}),
+          title: titleFromSelection(contentText || clipped.markdown),
+          content: clipped.markdown,
+          ...(clipped.html ? { contentHtml: clipped.html, contentText } : {}),
           layout: {
             x: Math.round(position.x),
             y: Math.round(position.y),
@@ -579,7 +578,10 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div
+      className="app-shell"
+      style={{ '--note-highlight': data.settings.highlightColor } as CSSProperties}
+    >
       {sidebarVisible ? (
         <Sidebar
           notes={notes}
@@ -649,7 +651,7 @@ export default function App() {
               onActivate={activateCanvasNote}
               onAddNote={() => void handleCreateNote(activeCanvas.id)}
               onCanvasImage={(file, position) => void handleCanvasImage(file, position)}
-              onCanvasText={(text, position) => void handleCanvasText(text, position)}
+              onCanvasText={(text, position, html) => void handleCanvasText(text, position, html)}
               onCanvasEmptyNote={(position, options) =>
                 void handleCanvasEmptyNote(position, options)
               }

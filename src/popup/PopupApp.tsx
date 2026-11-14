@@ -499,11 +499,11 @@ export function PopupApp() {
         const additionHtml = capturedTextToHtml(captured);
         const contentHtml = appendHtml(existingHtml, additionHtml);
         const contentText = textFromHtml(contentHtml);
+        // The captured selection is already Markdown, so append it to the
+        // canonical source instead of flattening it into plain text.
+        const content = appendAtEnd(selectedNote.content ?? '', captured);
         await notebook.updateNote(selectedNote.id, {
-          content: appendAtEnd(
-            selectedNote.contentText ?? selectedNote.content,
-            textFromHtml(additionHtml),
-          ),
+          content,
           contentHtml,
           contentText,
           // This is the only workflow that marks an existing note as updated.
@@ -514,7 +514,7 @@ export function PopupApp() {
       } else {
         const noteHtml = capturedTextToHtml(captured);
         const input = {
-          title: titleFromSelection(captured),
+          title: titleFromSelection(textFromMarkdown(captured)),
           content: captured,
           contentHtml: noteHtml,
           contentText: textFromHtml(noteHtml),

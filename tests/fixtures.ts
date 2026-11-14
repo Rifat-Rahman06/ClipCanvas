@@ -66,6 +66,7 @@ export function makeDataset(): NotebookDataset {
       singleClickZoom: 1,
       touchpadZoomSensitivity: 1,
       defaultNoteWidth: 430,
+      highlightColor: '#f6e27a',
       sidebarCollapsed: false,
     },
   };

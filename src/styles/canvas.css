@@ -229,7 +229,7 @@
   height: auto;
   min-height: 0;
   overflow: visible;
-  border-radius: 2px;
+  border-radius: 10px;
   background: transparent;
   color: var(--ink-800);
 }
@@ -390,9 +390,31 @@
   line-height: 1.72;
 }
 
+/* TipTap injects `.ProseMirror { font-variant-ligatures: none;
+   font-feature-settings: "liga" 0 }`. The read-only preview keeps normal
+   ligatures, so words such as "office", "final", and "efficient" rendered a
+   little wider while editing and made the sentence look more spread out.
+   Restore the preview's text shaping inside note editors. */
+.note-card .rich-text-content.ProseMirror {
+  font-variant-ligatures: normal;
+  font-feature-settings: normal;
+}
+
 .note-card .rich-text-content p,
 .note-card .rich-text-content li {
   white-space: pre-wrap;
+}
+
+/* Highlights are stored as plain `<mark>` elements. The color comes from a
+   settings-driven custom property, so every existing highlight updates at
+   once instead of baking a color into the note HTML. */
+.note-card .rich-text-content mark {
+  padding: 0.02em 0.12em;
+  border-radius: 3px;
+  background-color: var(--note-highlight, #f6e27a);
+  color: inherit;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 /* Use the same line rhythm for Enter-created paragraphs and pasted hard breaks.
@@ -442,6 +464,34 @@
   color: var(--ink-300);
   font-family: var(--font-serif);
   font-size: 13px;
+  font-style: italic;
+}
+
+/* Edit mode shows the note's canonical Markdown source. The textarea grows with
+   its content, so the card keeps the same rhythm it has in preview mode. */
+.note-card .note-markdown-input {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink-800);
+  font-family: var(--font-mono);
+  font-size: calc(var(--note-font-size, 16px) * 0.9);
+  line-height: 1.65;
+  tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  resize: none;
+  overflow: hidden;
+}
+
+.note-card .note-markdown-input::placeholder {
+  color: #b9b5a9;
+  font-family: var(--font-serif);
   font-style: italic;
 }
 

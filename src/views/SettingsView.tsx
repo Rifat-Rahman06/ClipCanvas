@@ -28,6 +28,7 @@ import {
   EDITOR_FONT_SIZE_DEFAULT,
   EDITOR_FONT_SIZE_MAX,
   EDITOR_FONT_SIZE_MIN,
+  NOTE_HIGHLIGHT_COLOR_DEFAULT,
   SCHEMA_VERSION,
   SINGLE_CLICK_ZOOM_DEFAULT,
   SINGLE_CLICK_ZOOM_MAX,
@@ -37,7 +38,7 @@ import {
   TOUCHPAD_ZOOM_SENSITIVITY_MIN,
   TOUCHPAD_ZOOM_SENSITIVITY_STEP,
 } from '../types';
-import { formatBytes, formatDateTime, nowIso } from '../lib/utils';
+import { classNames, formatBytes, formatDateTime, nowIso } from '../lib/utils';
 import {
   BackupValidationError,
   analyzeImport,
@@ -78,6 +79,15 @@ function formatZoomSensitivity(value: number): string {
   return `${value.toFixed(1).replace(/\.0$/, '')}x`;
 }
 
+const HIGHLIGHT_PRESETS = [
+  '#f6e27a',
+  '#ffd6a5',
+  '#c9f2c7',
+  '#bde0fe',
+  '#f9c6d3',
+  '#e4d6f7',
+];
+
 export function SettingsView({ onClose, onImported }: SettingsViewProps) {
   const { data, updateSettings } = useNotebook();
   const { notify } = useToast();
@@ -112,6 +122,12 @@ export function SettingsView({ onClose, onImported }: SettingsViewProps) {
   const widthDraftRef = useRef(DEFAULT_NOTE_WIDTH_DEFAULT);
   const widthDirtyRef = useRef(false);
   const savedDefaultNoteWidth = data?.settings.defaultNoteWidth;
+  const [highlightColor, setHighlightColor] = useState(NOTE_HIGHLIGHT_COLOR_DEFAULT);
+  const savedHighlightColor = data?.settings.highlightColor;
+
+  useEffect(() => {
+    if (savedHighlightColor) setHighlightColor(savedHighlightColor);
+  }, [savedHighlightColor]);
 
   useEffect(() => {
     if (savedFontSize === undefined || fontDirtyRef.current) return;
@@ -387,6 +403,20 @@ export function SettingsView({ onClose, onImported }: SettingsViewProps) {
     setDefaultNoteWidth(value);
   };
 
+  const handleHighlightColorChange = (value: string) => {
+    if (value === highlightColor) return;
+    const previous = highlightColor;
+    setHighlightColor(value);
+    void updateSettings({ highlightColor: value }).catch((error) => {
+      setHighlightColor(previous);
+      notify({
+        kind: 'error',
+        message:
+          error instanceof Error ? error.message : 'The highlight color could not be saved.',
+      });
+    });
+  };
+
   return (
     <div className="view-page settings-view">
       <header className="view-header">
@@ -547,6 +577,39 @@ export function SettingsView({ onClose, onImported }: SettingsViewProps) {
               <output className="font-size-value" htmlFor="editor-font-size">
                 {fontSize}px
               </output>
+            </div>
+          </div>
+          <div className="settings-field-row settings-zoom-row">
+            <div>
+              <span className="settings-field-title">Highlight color</span>
+              <span className="settings-field-description">
+                Used by the highlight button in the element toolbar.
+              </span>
+            </div>
+            <div className="highlight-color-control">
+              <input
+                id="highlight-color"
+                type="color"
+                value={highlightColor}
+                aria-label="Highlight color"
+                onChange={(event) => handleHighlightColorChange(event.target.value)}
+              />
+              <div className="highlight-swatches" role="group" aria-label="Highlight presets">
+                {HIGHLIGHT_PRESETS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={classNames(
+                      'highlight-swatch',
+                      color === highlightColor && 'is-active',
+                    )}
+                    style={{ background: color }}
+                    aria-label={`Use ${color} for highlights`}
+                    aria-pressed={color === highlightColor}
+                    onClick={() => handleHighlightColorChange(color)}
+                  />
+                ))}
+              </div>
             </div>
           </div>
           <div className="settings-field-row settings-zoom-row">
