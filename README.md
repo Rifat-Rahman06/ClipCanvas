@@ -56,6 +56,8 @@ Requires Chrome/Edge 116 or newer (`sidePanel` API).
 - Click an element to zoom in and start editing. Drag elements to reposition them and resize elements from their handles.
 - Use the canvas controls to pan, zoom, fit the canvas to the view, and adjust touchpad zoom sensitivity.
 - Search inside the current canvas with the canvas search control.
+- The three-dot menu beside **Fit canvas to view** exports the open canvas as a self-contained JSON file (notes and images included), imports a canvas file into the open canvas without replacing existing work or changing its name, and renames the open canvas.
+- The **+** buttons in the tab bar and sidebar offer **Create a New Canvas** and **Import a Canvas**. Importing there creates a separate new canvas and keeps the name stored in the file.
 
 ### Appearance
 

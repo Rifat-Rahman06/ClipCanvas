@@ -1,8 +1,9 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react';
-import { Layers, Maximize2, Menu, Moon, Plus, Search, Sun, X } from 'lucide-react';
+import { Layers, Maximize2, Menu, Moon, Plus, Search, Sun, Upload, X } from 'lucide-react';
 import type { Canvas, ThemeMode } from '../types';
 import { classNames } from '../lib/utils';
 import { openClipCanvasInTab } from '../services/extension/openInTab';
+import { ActionMenu } from './ActionMenu';
 import { IconButton } from './Button';
 
 interface CanvasTabsProps {
@@ -16,7 +17,8 @@ interface CanvasTabsProps {
   onToggleSidebar: () => void;
   onSelectTab: (canvasId: string) => void;
   onCloseTab: (canvasId: string) => void;
-  onNewCanvas: () => void;
+  onCreateCanvas: () => void;
+  onImportCanvas: () => void;
   onSearch: () => void;
 }
 
@@ -31,7 +33,8 @@ export function CanvasTabs({
   onToggleSidebar,
   onSelectTab,
   onCloseTab,
-  onNewCanvas,
+  onCreateCanvas,
+  onImportCanvas,
   onSearch,
 }: CanvasTabsProps) {
   const stripRef = useRef<HTMLDivElement>(null);
@@ -117,15 +120,24 @@ export function CanvasTabs({
             );
           })
         )}
-        <button
-          type="button"
-          className="note-tab-add"
-          aria-label="New canvas"
-          title="New canvas"
-          onClick={onNewCanvas}
-        >
-          <Plus size={15} />
-        </button>
+        <ActionMenu
+          label="New canvas"
+          size="sm"
+          buttonClassName="note-tab-add"
+          trigger={<Plus size={15} />}
+          items={[
+            {
+              label: 'Create a New Canvas',
+              icon: Plus,
+              onSelect: onCreateCanvas,
+            },
+            {
+              label: 'Import a Canvas',
+              icon: Upload,
+              onSelect: onImportCanvas,
+            },
+          ]}
+        />
       </div>
 
       <div className="topbar-actions">

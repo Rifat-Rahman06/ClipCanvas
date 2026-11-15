@@ -19,6 +19,7 @@ interface ActionMenuProps {
   size?: 'sm' | 'md';
   align?: 'left' | 'right';
   trigger?: React.ReactNode;
+  buttonClassName?: string;
 }
 
 interface Position {
@@ -32,6 +33,7 @@ export function ActionMenu({
   size = 'sm',
   align = 'right',
   trigger,
+  buttonClassName,
 }: ActionMenuProps) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<Position>({ top: 0, left: 0 });
@@ -114,7 +116,7 @@ export function ActionMenu({
         onClick={handleToggle}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={classNames(open && 'is-active')}
+        className={classNames(buttonClassName, open && 'is-active')}
       >
         {trigger ?? <MoreHorizontal size={16} />}
       </IconButton>

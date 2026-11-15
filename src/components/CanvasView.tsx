@@ -36,7 +36,7 @@ import {
   type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { ChevronDown, ChevronUp, Plus, Scan, Search, StickyNote, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Download, Pencil, Plus, Scan, Search, StickyNote, Upload, X } from 'lucide-react';
 import {
   CANVAS_MAX_ZOOM,
   CANVAS_MIN_ZOOM,
@@ -56,6 +56,7 @@ import {
 } from '../types';
 import { defaultNoteLayout } from '../services/db/repository';
 import { Button, IconButton } from './Button';
+import { ActionMenu } from './ActionMenu';
 import { ActiveNoteToolbar, type NoteFormatAction } from './ActiveNoteToolbar';
 import {
   NoteCard,
@@ -382,6 +383,9 @@ interface CanvasViewProps {
   onNoteAction: (noteId: string, action: NoteCardAction) => void;
   onActivate: (noteId: string) => void;
   onAddNote: () => void;
+  onExportCanvas: () => void;
+  onImportCanvas: () => void;
+  onRenameCanvas: () => void;
   onCanvasImage: (file: File, position: { x: number; y: number }) => void;
   onCanvasText: (
     text: string,
@@ -424,6 +428,9 @@ function CanvasSurface({
   onNoteAction,
   onActivate,
   onAddNote,
+  onExportCanvas,
+  onImportCanvas,
+  onRenameCanvas,
   onCanvasImage,
   onCanvasText,
   onCanvasEmptyNote,
@@ -1454,6 +1461,27 @@ function CanvasSurface({
           color="var(--line-faint)"
         />
         <Panel position="top-right" className="canvas-fit-panel">
+          <ActionMenu
+            label="Canvas options"
+            size="sm"
+            items={[
+              {
+                label: 'Export This Canvas',
+                icon: Download,
+                onSelect: onExportCanvas,
+              },
+              {
+                label: 'Import Canvas',
+                icon: Upload,
+                onSelect: onImportCanvas,
+              },
+              {
+                label: 'Rename This Canvas',
+                icon: Pencil,
+                onSelect: onRenameCanvas,
+              },
+            ]}
+          />
           <IconButton
             label="Fit canvas to view"
             size="sm"

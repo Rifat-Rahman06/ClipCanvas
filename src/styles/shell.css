@@ -679,7 +679,7 @@
     border-color var(--speed) var(--ease);
 }
 
-.note-tab-add:hover {
+.note-tab-add:hover:not(:disabled) {
   border-color: var(--line);
   background: var(--surface-raised);
   color: var(--accent);

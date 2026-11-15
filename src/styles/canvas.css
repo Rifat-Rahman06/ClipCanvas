@@ -43,6 +43,9 @@
 }
 
 .react-flow__panel.canvas-fit-panel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 11px;
 }
 

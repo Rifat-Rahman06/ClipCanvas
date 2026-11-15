@@ -11,6 +11,16 @@ import { compressImage } from './lib/images';
 import { clipboardToNote, textFromHtmlWithBreaks } from './lib/richText';
 import { applyTheme } from './lib/theme';
 import { createAttachment } from './services/db/attachments';
+import {
+  CanvasTransferError,
+  canvasTransferFilename,
+  createCanvasFromTransfer,
+  createCanvasTransfer,
+  mergeCanvasTransfer,
+  readCanvasTransferFile,
+  serializeCanvasTransfer,
+} from './services/import-export/canvasTransfer';
+import { downloadJson } from './services/import-export/download';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { useWorkspace } from './hooks/useWorkspace';
 import { useInsertSelection } from './hooks/useInsertSelection';
@@ -38,7 +48,8 @@ export default function App() {
   const workspace = useWorkspace(data?.canvases ?? null, data?.notes ?? null);
   const insertSelection = useInsertSelection();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [canvasDialogOpen, setCanvasDialogOpen] = useState(false);
+  const [canvasDialogMode, setCanvasDialogMode] = useState<'create' | 'rename' | null>(null);
+  const [importingCanvas, setImportingCanvas] = useState(false);
   const [canvasSearchOpen, setCanvasSearchOpen] = useState(false);
   const [noteAction, setNoteAction] = useState<{
     noteId: string;
@@ -54,6 +65,11 @@ export default function App() {
   const [pendingEmptyNoteIds, setPendingEmptyNoteIds] = useState<Set<string>>(new Set());
   const [savingNoteIds, setSavingNoteIds] = useState<Set<string>>(() => new Set());
   const searchCanvasIdRef = useRef<string | null>(null);
+  const canvasFileInputRef = useRef<HTMLInputElement>(null);
+  const canvasImportTargetRef = useRef<
+    { mode: 'merge'; canvasId: string } | { mode: 'new'; projectId: string | null } | null
+  >(null);
+  const importingCanvasRef = useRef(false);
   const requestedCanvasId = useMemo(
     () => new URLSearchParams(window.location.search).get('canvas'),
     [],
@@ -453,8 +469,104 @@ export default function App() {
   );
 
   const handleNewCanvas = useCallback(() => {
-    setCanvasDialogOpen(true);
+    setCanvasDialogMode('create');
   }, []);
+
+  const handleRenameCanvas = useCallback(() => {
+    if (!activeCanvas) return;
+    setCanvasDialogMode('rename');
+  }, [activeCanvas]);
+
+  const handleExportCanvas = useCallback(async () => {
+    if (!activeCanvas) return;
+    try {
+      const transfer = await createCanvasTransfer(activeCanvas.id);
+      await downloadJson(
+        canvasTransferFilename(activeCanvas.name),
+        serializeCanvasTransfer(transfer),
+      );
+      notify({
+        kind: 'success',
+        message: `Canvas “${activeCanvas.name}” exported.`,
+      });
+    } catch (error) {
+      notify({
+        kind: 'error',
+        message:
+          error instanceof Error ? error.message : 'The canvas could not be exported.',
+      });
+    }
+  }, [activeCanvas, notify]);
+
+  const requestCanvasImport = useCallback(
+    (mode: 'merge' | 'new') => {
+      if (mode === 'merge') {
+        if (!activeCanvas) {
+          notify({ kind: 'info', message: 'Open a canvas before importing into it.' });
+          return;
+        }
+        canvasImportTargetRef.current = { mode: 'merge', canvasId: activeCanvas.id };
+      } else {
+        canvasImportTargetRef.current = {
+          mode: 'new',
+          projectId: activeCanvas?.projectId ?? null,
+        };
+      }
+      const input = canvasFileInputRef.current;
+      if (!input) return;
+      input.value = '';
+      input.click();
+    },
+    [activeCanvas, notify],
+  );
+
+  const handleCanvasImportFile = useCallback(
+    async (file: File) => {
+      const target = canvasImportTargetRef.current;
+      canvasImportTargetRef.current = null;
+      if (!target || importingCanvasRef.current) return;
+      importingCanvasRef.current = true;
+      setImportingCanvas(true);
+      try {
+        const transfer = await readCanvasTransferFile(file);
+        if (target.mode === 'merge') {
+          const result = await mergeCanvasTransfer(transfer, target.canvasId);
+          await notebook.refresh();
+          notify({
+            kind: 'success',
+            message: `Imported ${result.notesAdded} ${
+              result.notesAdded === 1 ? 'element' : 'elements'
+            } into “${result.canvasName}”.`,
+          });
+        } else {
+          const result = await createCanvasFromTransfer(transfer, target.projectId);
+          await notebook.refresh();
+          workspace.openCanvas(result.canvas.id);
+          closeMobileSidebar();
+          notify({
+            kind: 'success',
+            message: `Canvas “${result.canvas.name}” imported with ${result.notesAdded} ${
+              result.notesAdded === 1 ? 'element' : 'elements'
+            }.`,
+          });
+        }
+      } catch (error) {
+        notify({
+          kind: 'error',
+          message:
+            error instanceof CanvasTransferError
+              ? error.message
+              : error instanceof Error
+                ? error.message
+                : 'The canvas could not be imported.',
+        });
+      } finally {
+        importingCanvasRef.current = false;
+        setImportingCanvas(false);
+      }
+    },
+    [closeMobileSidebar, notebook, notify, workspace],
+  );
 
   const handleInsertSelection = useCallback(async () => {
     if (!activeNote) {
@@ -615,6 +727,7 @@ export default function App() {
           onClose={closeSidebar}
           onOpenSettings={() => openUtility('settings')}
           onCreateCanvas={handleNewCanvas}
+          onImportCanvas={() => requestCanvasImport('new')}
           onOpenCanvas={openCanvas}
           onOpenNote={openNote}
           onCanvasAction={(canvasId, action) => {
@@ -648,7 +761,8 @@ export default function App() {
             closeMobileSidebar();
           }}
           onCloseTab={workspace.closeTab}
-          onNewCanvas={handleNewCanvas}
+          onCreateCanvas={handleNewCanvas}
+          onImportCanvas={() => requestCanvasImport('new')}
           onSearch={openCanvasSearch}
         />
 
@@ -674,6 +788,9 @@ export default function App() {
               onNoteAction={(noteId, action) => setNoteAction({ noteId, action })}
               onActivate={activateCanvasNote}
               onAddNote={() => void handleCreateNote(activeCanvas.id)}
+              onExportCanvas={() => void handleExportCanvas()}
+              onImportCanvas={() => requestCanvasImport('merge')}
+              onRenameCanvas={handleRenameCanvas}
               onCanvasImage={(file, position) => void handleCanvasImage(file, position)}
               onCanvasText={(text, position, html) => void handleCanvasText(text, position, html)}
               onCanvasEmptyNote={(position, options) =>
@@ -698,12 +815,31 @@ export default function App() {
       </main>
 
       <CanvasDialog
-        open={canvasDialogOpen}
+        open={canvasDialogMode !== null}
+        mode={canvasDialogMode === 'rename' ? 'rename' : 'create'}
+        canvas={canvasDialogMode === 'rename' ? activeCanvas : null}
         projectId={activeCanvas?.projectId ?? null}
-        onClose={() => setCanvasDialogOpen(false)}
+        onClose={() => setCanvasDialogMode(null)}
         onSaved={(canvas) => {
-          workspace.openCanvas(canvas.id);
+          if (canvasDialogMode === 'create') workspace.openCanvas(canvas.id);
           closeMobileSidebar();
+        }}
+      />
+
+      <input
+        ref={canvasFileInputRef}
+        type="file"
+        accept="application/json,.json"
+        className="sr-only"
+        tabIndex={-1}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = '';
+          if (file) {
+            void handleCanvasImportFile(file);
+          } else {
+            canvasImportTargetRef.current = null;
+          }
         }}
       />
 
@@ -758,6 +894,12 @@ export default function App() {
       {creatingNote ? (
         <div className="global-busy" role="status" aria-live="polite">
           Creating note…
+        </div>
+      ) : null}
+
+      {importingCanvas ? (
+        <div className="global-busy" role="status" aria-live="polite">
+          Importing canvas…
         </div>
       ) : null}
     </div>

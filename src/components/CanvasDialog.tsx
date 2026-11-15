@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Layers } from 'lucide-react';
+import { Layers, Pencil } from 'lucide-react';
 import type { Canvas } from '../types';
 import { LIMITS } from '../services/db/repository';
 import { useNotebook } from '../state/NotebookContext';
@@ -9,41 +9,73 @@ import { Dialog } from './Dialog';
 
 interface CanvasDialogProps {
   open: boolean;
+  mode?: 'create' | 'rename';
+  canvas?: Canvas | null;
   projectId: string | null;
   onClose: () => void;
   onSaved: (canvas: Canvas) => void;
 }
 
-export function CanvasDialog({ open, projectId, onClose, onSaved }: CanvasDialogProps) {
-  const { createCanvas } = useNotebook();
+export function CanvasDialog({
+  open,
+  mode = 'create',
+  canvas = null,
+  projectId,
+  onClose,
+  onSaved,
+}: CanvasDialogProps) {
+  const { createCanvas, updateCanvas } = useNotebook();
   const { notify } = useToast();
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const renaming = mode === 'rename';
 
   useEffect(() => {
     if (!open) return;
-    setName('');
+    setName(renaming ? canvas?.name ?? '' : '');
     setError(null);
     setSaving(false);
-  }, [open]);
+    // Only reset when the dialog opens or switches target; typing should not
+    // be interrupted by a re-render that hands over a new canvas object.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, mode, canvas?.id]);
 
   const handleSubmit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (saving) return;
-    if (!name.trim()) {
+    const trimmed = name.trim();
+    if (!trimmed) {
       setError('Canvas name cannot be empty.');
+      return;
+    }
+    if (renaming && !canvas) {
+      setError('That canvas no longer exists.');
       return;
     }
     setSaving(true);
     setError(null);
     try {
-      const canvas = await createCanvas({ projectId: projectId ?? undefined, name });
-      notify({ kind: 'success', message: `Canvas “${canvas.name}” created.` });
-      onSaved(canvas);
+      const saved =
+        renaming && canvas
+          ? await updateCanvas(canvas.id, { name: trimmed })
+          : await createCanvas({ projectId: projectId ?? undefined, name: trimmed });
+      notify({
+        kind: 'success',
+        message: renaming
+          ? `Canvas renamed to “${saved.name}”.`
+          : `Canvas “${saved.name}” created.`,
+      });
+      onSaved(saved);
       onClose();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'The canvas could not be created.');
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : renaming
+            ? 'The canvas could not be renamed.'
+            : 'The canvas could not be created.',
+      );
     } finally {
       setSaving(false);
     }
@@ -52,8 +84,12 @@ export function CanvasDialog({ open, projectId, onClose, onSaved }: CanvasDialog
   return (
     <Dialog
       open={open}
-      title="New canvas"
-      description="Give this canvas a name. Its notes and images will stay together on this canvas."
+      title={renaming ? 'Rename canvas' : 'New canvas'}
+      description={
+        renaming
+          ? 'Choose a new name for this canvas. Its notes and images stay in place.'
+          : 'Give this canvas a name. Its notes and images will stay together on this canvas.'
+      }
       onClose={saving ? () => undefined : onClose}
       busy={saving}
       size="sm"
@@ -67,9 +103,9 @@ export function CanvasDialog({ open, projectId, onClose, onSaved }: CanvasDialog
             type="submit"
             form="canvas-form"
             loading={saving}
-            icon={!saving ? <Layers size={15} /> : undefined}
+            icon={!saving ? renaming ? <Pencil size={15} /> : <Layers size={15} /> : undefined}
           >
-            Create canvas
+            {renaming ? 'Rename canvas' : 'Create canvas'}
           </Button>
         </>
       }
