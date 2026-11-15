@@ -31,7 +31,9 @@ import {
 } from '../lib/utils';
 import { appendHtml, markdownToHtml, textFromHtml } from '../lib/richText';
 import { capturedTextToHtml } from '../lib/insertion';
+import { applyTheme } from '../lib/theme';
 import { LIMITS, sortCanvases } from '../services/db/repository';
+import { loadWorkspaceState } from '../services/workspace/workspaceStorage';
 import {
   clearCapturePopup,
   readCapturePopup,
@@ -51,6 +53,7 @@ interface CanvasTargetProps {
   canvases: Canvas[];
   noteCounts: Map<string, number>;
   selectedCanvasId: string | null;
+  recommendedCanvasId: string | null;
   newCanvasName: string;
   disabled: boolean;
   onSelectExisting: (canvasId: string) => void;
@@ -61,6 +64,7 @@ function CanvasTarget({
   canvases,
   noteCounts,
   selectedCanvasId,
+  recommendedCanvasId,
   newCanvasName,
   disabled,
   onSelectExisting,
@@ -86,12 +90,10 @@ function CanvasTarget({
   }, [open]);
 
   const normalizedQuery = query.trim().toLocaleLowerCase('en-US');
-  const filtered = canvases
-    .filter((canvas) => {
-      if (!normalizedQuery) return true;
-      return canvas.name.toLocaleLowerCase('en-US').includes(normalizedQuery);
-    })
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const filtered = canvases.filter((canvas) => {
+    if (!normalizedQuery) return true;
+    return canvas.name.toLocaleLowerCase('en-US').includes(normalizedQuery);
+  });
   const exactMatch = canvases.find(
     (canvas) => canvas.name.trim().toLocaleLowerCase('en-US') === normalizedQuery,
   );
@@ -204,6 +206,7 @@ function CanvasTarget({
             ) : (
               filtered.map((canvas) => {
                 const active = canvas.id === selectedCanvasId;
+                const recommended = canvas.id === recommendedCanvasId;
                 return (
                   <button
                     key={canvas.id}
@@ -219,6 +222,9 @@ function CanvasTarget({
                       <span className="popup-target-option-meta">
                         {noteCounts.get(canvas.id) ?? 0}{' '}
                         {(noteCounts.get(canvas.id) ?? 0) === 1 ? 'element' : 'elements'}
+                        {recommended ? (
+                          <span className="popup-target-recent">Recent</span>
+                        ) : null}
                       </span>
                     </span>
                     {active ? <Check size={14} /> : null}
@@ -346,6 +352,14 @@ export function PopupApp() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const savingRef = useRef(false);
+  const canvasTouchedRef = useRef(false);
+  const [recentCanvasId, setRecentCanvasId] = useState<string | null>(null);
+  const popupTheme = data?.settings.theme;
+
+  useEffect(() => {
+    if (!popupTheme) return;
+    applyTheme(popupTheme);
+  }, [popupTheme]);
 
   useEffect(() => {
     let cancelled = false;
@@ -387,6 +401,18 @@ export function PopupApp() {
     };
   }, []);
 
+  // The side panel stores the canvas the reader last worked in. Prefer it over
+  // "most recently renamed/updated", which can point at an untouched canvas.
+  useEffect(() => {
+    let cancelled = false;
+    void loadWorkspaceState().then((state) => {
+      if (!cancelled) setRecentCanvasId(state.activeCanvasId);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // The side panel is canvas-first, so the capture popup targets the same
   // canvases by name instead of the internal projects that the UI never shows.
   const canvases = useMemo(() => sortCanvases(data?.canvases ?? []), [data]);
@@ -397,6 +423,29 @@ export function PopupApp() {
     return map;
   }, [notes]);
 
+  // Recommend the canvas the editor last used, falling back to the most
+  // recently updated one when the workspace has no history (or it was closed).
+  const recommendedCanvasId = useMemo(() => {
+    if (recentCanvasId && canvases.some((canvas) => canvas.id === recentCanvasId)) {
+      return recentCanvasId;
+    }
+    const latest = [...canvases].sort(
+      (a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.name.localeCompare(b.name),
+    )[0];
+    return latest?.id ?? null;
+  }, [canvases, recentCanvasId]);
+
+  // The picker lists the recommendation first, then the rest by recency.
+  const orderedCanvases = useMemo(
+    () =>
+      [...canvases].sort((a, b) => {
+        if (a.id === recommendedCanvasId) return -1;
+        if (b.id === recommendedCanvasId) return 1;
+        return b.updatedAt.localeCompare(a.updatedAt) || a.name.localeCompare(b.name);
+      }),
+    [canvases, recommendedCanvasId],
+  );
+
   const canvasNotes = useMemo(() => {
     if (!selectedCanvasId) return [];
     return notes
@@ -405,11 +454,13 @@ export function PopupApp() {
   }, [notes, selectedCanvasId]);
 
   useEffect(() => {
-    if (selectedCanvasId || newCanvasName) return;
-    if (canvases.length === 0) return;
-    const recent = [...canvases].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    setSelectedCanvasId(recent[0]?.id ?? null);
-  }, [canvases, newCanvasName, selectedCanvasId]);
+    // Once the reader picks a canvas themselves, stop overriding their choice.
+    if (canvasTouchedRef.current || newCanvasName) return;
+    if (!recommendedCanvasId) return;
+    setSelectedCanvasId((current) =>
+      current === recommendedCanvasId ? current : recommendedCanvasId,
+    );
+  }, [newCanvasName, recommendedCanvasId]);
 
   useEffect(() => {
     if (!selectedCanvasId) return;
@@ -456,12 +507,14 @@ export function PopupApp() {
   };
 
   const handleSelectExistingCanvas = (canvasId: string) => {
+    canvasTouchedRef.current = true;
     setSelectedCanvasId(canvasId);
     setNewCanvasName('');
     setError(null);
   };
 
   const handleSelectNewCanvas = (name: string) => {
+    canvasTouchedRef.current = true;
     setNewCanvasName(name);
     setSelectedCanvasId(null);
     setSelectedNoteId(null);
@@ -641,9 +694,10 @@ export function PopupApp() {
             {newCanvasName ? <span className="popup-badge">New</span> : null}
           </div>
           <CanvasTarget
-            canvases={canvases}
+            canvases={orderedCanvases}
             noteCounts={noteCounts}
             selectedCanvasId={selectedCanvasId}
+            recommendedCanvasId={recommendedCanvasId}
             newCanvasName={newCanvasName}
             disabled={saving}
             onSelectExisting={handleSelectExistingCanvas}

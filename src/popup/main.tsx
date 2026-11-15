@@ -7,6 +7,7 @@ import '../styles/base.css';
 import '../styles/toast.css';
 import '../styles/popup.css';
 import { PopupApp } from './PopupApp';
+import { applyTheme, readStoredTheme } from '../lib/theme';
 import { NotebookProvider } from '../state/NotebookContext';
 import { ToastProvider } from '../state/ToastContext';
 
@@ -15,6 +16,8 @@ const container = document.getElementById('root');
 if (!container) {
   throw new Error('ClipCanvas could not find its popup root element.');
 }
+
+applyTheme(readStoredTheme());
 
 createRoot(container).render(
   <StrictMode>

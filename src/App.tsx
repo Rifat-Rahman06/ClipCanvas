@@ -9,6 +9,7 @@ import {
 import { classNames, noteDisplayTitle, titleFromSelection } from './lib/utils';
 import { compressImage } from './lib/images';
 import { clipboardToNote, textFromHtmlWithBreaks } from './lib/richText';
+import { applyTheme } from './lib/theme';
 import { createAttachment } from './services/db/attachments';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { useWorkspace } from './hooks/useWorkspace';
@@ -107,6 +108,12 @@ export default function App() {
 
   const sidebarVisible = !data ? false : isMobile ? mobileSidebarOpen : !data.settings.sidebarCollapsed;
   const showSidebarButton = isMobile || Boolean(data?.settings.sidebarCollapsed);
+  const theme = data?.settings.theme;
+
+  useEffect(() => {
+    if (!theme) return;
+    applyTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     const activeCanvasId = activeCanvas?.id ?? null;
@@ -163,6 +170,21 @@ export default function App() {
         });
       });
   }, [data, isMobile, notebook, notify]);
+
+  const toggleTheme = useCallback(() => {
+    if (!data) return;
+    const previous = data.settings.theme;
+    const next = previous === 'dark' ? 'light' : 'dark';
+    // Apply before the database round-trip so the switch feels instant.
+    applyTheme(next);
+    void notebook.updateSettings({ theme: next }).catch((error: unknown) => {
+      applyTheme(previous);
+      notify({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'The theme preference could not be saved.',
+      });
+    });
+  }, [data, notebook, notify]);
 
   const closeMobileSidebar = useCallback(() => {
     if (isMobile) setMobileSidebarOpen(false);
@@ -618,6 +640,8 @@ export default function App() {
           view={workspace.view}
           showSidebarButton={showSidebarButton}
           pendingCanvasIds={pendingCanvasIds}
+          theme={theme ?? 'light'}
+          onToggleTheme={toggleTheme}
           onToggleSidebar={toggleSidebar}
           onSelectTab={(canvasId) => {
             workspace.selectCanvas(canvasId);

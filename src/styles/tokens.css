@@ -25,6 +25,7 @@
   --line: #e7e4da;
   --line-strong: #d9d5c9;
   --line-faint: #efede5;
+  --line-edge: #cbc6b9;
 
   --accent: #256d5b;
   --accent-hover: #1d5b4b;
@@ -33,23 +34,72 @@
   --accent-soft-2: #d7e7df;
   --accent-ink: #1a4a3e;
   --accent-ring: rgba(37, 109, 91, 0.2);
+  --accent-wash: rgba(37, 109, 91, 0.055);
+  --accent-wash-strong: rgba(215, 231, 223, 0.6);
+  --accent-wash-bg: #f5faf7;
+
+  /* Text placed on top of a filled accent or danger surface. */
+  --on-accent: #fdfcf8;
+  --on-danger: #ffffff;
+  --on-accent-soft: rgba(255, 255, 255, 0.28);
 
   --danger: #a6423a;
   --danger-hover: #8e352e;
   --danger-soft: #f8eae7;
   --danger-line: #ecd0cb;
+  --danger-bg: #fdf8f6;
+  --danger-tint-hover: rgba(166, 66, 58, 0.08);
 
   --warning: #8d6119;
   --warning-soft: #f7efdd;
   --warning-line: #ebdcba;
+  --warning-bg: #fdfaf3;
 
   --success: #2e6a4d;
   --success-soft: #e8f2ec;
+  --success-line: #cfe2d6;
+  --success-bg: #f6fbf7;
 
+  /* Low-contrast fills used for hover states and quiet badges. */
+  --tint-hover: rgba(31, 37, 31, 0.045);
+  --tint-active: rgba(31, 37, 31, 0.07);
+  --tint-badge: rgba(31, 37, 31, 0.055);
+
+  --overlay: rgba(24, 30, 24, 0.38);
+  --overlay-soft: rgba(24, 30, 24, 0.32);
+
+  --scrollbar-thumb: #d7d3c8;
+  --scrollbar-thumb-hover: #c3beb1;
+
+  --placeholder: #b9b5a9;
+  --placeholder-strong: #c1beb3;
+  --link-underline: #a9c7b8;
+
+  --topbar-to: #fdfcf8;
+  --dialog-footer-to: #f4f2eb;
+  --field-hover-bg: #fdfcf8;
+  --sidebar-footer-bg: rgba(242, 240, 233, 0.82);
+
+  --tooltip-bg: #1f251f;
+  --tooltip-ink: #ffffff;
+
+  --mark-bg: #efe4b9;
+  --mark-ink: #2b2412;
+  --note-highlight-ink: #2b2412;
+
+  --search-hl-all: rgba(239, 201, 104, 0.55);
+  --search-hl-current: #f0b429;
+  --search-hl-current-ink: #2b2412;
+
+  --shadow-accent: 0 1px 2px rgba(23, 74, 62, 0.16);
   --shadow-xs: 0 1px 2px rgba(31, 37, 31, 0.04);
   --shadow-sm: 0 1px 3px rgba(31, 37, 31, 0.06), 0 1px 2px rgba(31, 37, 31, 0.03);
   --shadow-md: 0 8px 24px rgba(31, 37, 31, 0.1), 0 2px 6px rgba(31, 37, 31, 0.05);
   --shadow-lg: 0 24px 60px rgba(31, 37, 31, 0.18), 0 4px 12px rgba(31, 37, 31, 0.07);
+  --shadow-press: 0 1px 2px rgba(31, 37, 31, 0.09);
+  --shadow-drawer: 18px 0 40px rgba(31, 37, 31, 0.16);
+  --filter-brand: drop-shadow(0 1px 1px rgba(23, 74, 62, 0.12));
+  --filter-brand-lg: drop-shadow(0 4px 10px rgba(23, 74, 62, 0.18));
 
   --radius-xs: 5px;
   --radius-sm: 7px;
@@ -62,4 +112,105 @@
 
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --speed: 150ms;
+}
+
+/* A warm charcoal palette rather than pure black: paper-like surfaces with
+   enough contrast for long reading sessions, and a brighter green accent so
+   interactive elements stay recognizable on dark backgrounds. */
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg-app: #171b18;
+  --bg-sidebar: #1b201c;
+  --bg-sidebar-deep: #151a16;
+  --surface: #1d231e;
+  --surface-raised: #242b25;
+  --surface-muted: #202623;
+  --surface-sunken: #1a201c;
+  --paper: #222823;
+
+  --ink-900: #e9e7de;
+  --ink-800: #d6d4ca;
+  --ink-700: #bcbab0;
+  --ink-600: #a2a79e;
+  --ink-500: #8b928a;
+  --ink-400: #737a72;
+  --ink-300: #5b625b;
+
+  --line: #2f3830;
+  --line-strong: #3b453c;
+  --line-faint: #272e28;
+  --line-edge: #46514a;
+
+  --accent: #58ab8d;
+  --accent-hover: #6dbd9f;
+  --accent-strong: #82cfb2;
+  --accent-soft: #213730;
+  --accent-soft-2: #294439;
+  --accent-ink: #a6e3cd;
+  --accent-ring: rgba(88, 171, 141, 0.35);
+  --accent-wash: rgba(88, 171, 141, 0.09);
+  --accent-wash-strong: rgba(88, 171, 141, 0.16);
+  --accent-wash-bg: #1f2f29;
+
+  --on-accent: #10211b;
+  --on-danger: #2a1210;
+  --on-accent-soft: rgba(16, 33, 27, 0.32);
+
+  --danger: #e28078;
+  --danger-hover: #ec948c;
+  --danger-soft: #37211f;
+  --danger-line: #4d2c28;
+  --danger-bg: #2b1d1b;
+  --danger-tint-hover: rgba(226, 128, 120, 0.14);
+
+  --warning: #d9a955;
+  --warning-soft: #33280f;
+  --warning-line: #4a3a1c;
+  --warning-bg: #2b2415;
+
+  --success: #6cc79a;
+  --success-soft: #1f3329;
+  --success-line: #2d493a;
+  --success-bg: #1b2b23;
+
+  --tint-hover: rgba(255, 255, 255, 0.06);
+  --tint-active: rgba(255, 255, 255, 0.095);
+  --tint-badge: rgba(255, 255, 255, 0.075);
+
+  --overlay: rgba(0, 0, 0, 0.58);
+  --overlay-soft: rgba(0, 0, 0, 0.5);
+
+  --scrollbar-thumb: #3a433b;
+  --scrollbar-thumb-hover: #4b554c;
+
+  --placeholder: #6f766e;
+  --placeholder-strong: #7a8178;
+  --link-underline: #3f5f52;
+
+  --topbar-to: #202620;
+  --dialog-footer-to: #1c221d;
+  --field-hover-bg: #232a24;
+  --sidebar-footer-bg: rgba(27, 32, 28, 0.82);
+
+  --tooltip-bg: #0f1311;
+  --tooltip-ink: #e9e7de;
+
+  --mark-bg: #5a4a17;
+  --mark-ink: #f3e8b8;
+  --note-highlight-ink: #241f10;
+
+  --search-hl-all: rgba(239, 201, 104, 0.32);
+  --search-hl-current: #b8860f;
+  --search-hl-current-ink: #fdf6e0;
+
+  --shadow-accent: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.34), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.28);
+  --shadow-lg: 0 26px 64px rgba(0, 0, 0, 0.55), 0 6px 16px rgba(0, 0, 0, 0.35);
+  --shadow-press: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-drawer: 18px 0 40px rgba(0, 0, 0, 0.52);
+  --filter-brand: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+  --filter-brand-lg: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
 }

@@ -12,6 +12,7 @@ import './styles/dialogs.css';
 import './styles/toast.css';
 import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { applyTheme, readStoredTheme } from './lib/theme';
 import { NotebookProvider } from './state/NotebookContext';
 import { ToastProvider } from './state/ToastContext';
 
@@ -20,6 +21,8 @@ const container = document.getElementById('root');
 if (!container) {
   throw new Error('ClipCanvas could not find its root element.');
 }
+
+applyTheme(readStoredTheme());
 
 createRoot(container).render(
   <StrictMode>

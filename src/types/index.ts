@@ -28,6 +28,8 @@ export const TOUCHPAD_ZOOM_SENSITIVITY_STEP = 0.5;
 export const TOUCHPAD_ZOOM_SENSITIVITY_DEFAULT = 1;
 
 export type EditorMode = 'write' | 'preview';
+export type ThemeMode = 'light' | 'dark';
+export const THEME_DEFAULT: ThemeMode = 'light';
 export type ImportMode = 'merge' | 'replace';
 
 /**
@@ -146,6 +148,8 @@ export interface AppSettings {
   lastBackupAt: string | null;
   lastImportAt: string | null;
   editorMode: EditorMode;
+  /** Applies to the editor, capture popup, and export preview alike. */
+  theme: ThemeMode;
   editorFontSize: number;
   /** Seconds of inactivity before an edited note is saved. */
   autosaveDelaySeconds: number;

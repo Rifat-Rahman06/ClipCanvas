@@ -80,14 +80,14 @@ a:focus:not(:focus-visible) {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d7d3c8;
+  background: var(--scrollbar-thumb);
   border: 3px solid transparent;
   border-radius: 6px;
   background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #c3beb1;
+  background: var(--scrollbar-thumb-hover);
   border: 3px solid transparent;
   background-clip: content-box;
 }
@@ -118,7 +118,7 @@ kbd {
   height: 17px;
   padding: 0 4px;
   border: 1px solid var(--line-strong);
-  border-bottom-color: #cbc6b9;
+  border-bottom-color: var(--line-edge);
   border-radius: 4px;
   background: var(--surface-raised);
   color: var(--ink-500);
@@ -176,14 +176,14 @@ kbd {
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fdfcf8;
-  box-shadow: 0 1px 2px rgba(23, 74, 62, 0.16);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-accent);
 }
 
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .btn-secondary {
@@ -195,7 +195,7 @@ kbd {
 
 .btn-secondary:hover:not(:disabled) {
   background: var(--surface-muted);
-  border-color: #c9c4b7;
+  border-color: var(--line-edge);
 }
 
 .btn-soft {
@@ -221,7 +221,7 @@ kbd {
 .btn-danger {
   background: var(--danger);
   border-color: var(--danger);
-  color: #fff;
+  color: var(--on-danger);
 }
 
 .btn-danger:hover:not(:disabled) {
@@ -268,7 +268,7 @@ kbd {
 }
 
 .icon-btn:hover:not(:disabled) {
-  background: rgba(31, 37, 31, 0.06);
+  background: var(--tint-hover);
   color: var(--ink-800);
 }
 
@@ -396,7 +396,7 @@ kbd {
 .input:hover,
 .textarea:hover,
 .select:hover {
-  border-color: #cbc6b9;
+  border-color: var(--line-edge);
 }
 
 .input:focus,
@@ -496,7 +496,7 @@ kbd {
 .segmented-option.is-active {
   background: var(--surface-raised);
   color: var(--accent-ink);
-  box-shadow: 0 1px 2px rgba(31, 37, 31, 0.09);
+  box-shadow: var(--shadow-press);
 }
 
 .segmented-option:disabled {

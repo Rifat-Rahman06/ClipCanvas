@@ -41,9 +41,36 @@ const NOTE_TAGS = [
 const NOTE_ATTRIBUTES: sanitizeHtml.IOptions['allowedAttributes'] = {
   a: ['href', 'title', 'target', 'rel'],
   img: ['src', 'alt', 'title', 'width', 'height', 'data-attachment-id'],
+  ol: ['start'],
+  code: ['class'],
   th: ['colspan', 'rowspan'],
   td: ['colspan', 'rowspan'],
 };
+
+/**
+ * Block wrappers that common clipboard implementations use instead of
+ * paragraphs (`<div>`, `<section>`, ...). They are not part of the note schema,
+ * but dropping them before conversion joined adjacent lines into one word
+ * (`<div>one</div><div>two</div>` became `onetwo`). Keep them only while a
+ * clipboard payload is being converted to Markdown, then render stored HTML
+ * from that Markdown so the notes themselves never contain foreign wrappers.
+ */
+const CLIPBOARD_BLOCK_TAGS = [
+  'address',
+  'article',
+  'aside',
+  'dd',
+  'div',
+  'dl',
+  'dt',
+  'figcaption',
+  'figure',
+  'footer',
+  'header',
+  'main',
+  'nav',
+  'section',
+] as const;
 
 function escapeHtml(value: string): string {
   return value
@@ -96,11 +123,10 @@ function preserveTextLineBreaks(html: string): string {
     .join('');
 }
 
-/** Sanitizes rich note HTML while preserving the nodes used by the editor. */
-export function sanitizeNoteHtml(html: string): string {
+function sanitizeWithTags(html: string, extraTags: readonly string[] = []): string {
   if (!html.trim()) return '';
   return sanitizeHtml(preserveTextLineBreaks(html), {
-    allowedTags: [...NOTE_TAGS],
+    allowedTags: [...NOTE_TAGS, ...extraTags],
     allowedAttributes: NOTE_ATTRIBUTES,
     allowedSchemes: ['http', 'https', 'mailto'],
     allowedSchemesByTag: {
@@ -117,6 +143,16 @@ export function sanitizeNoteHtml(html: string): string {
       }),
     },
   });
+}
+
+/** Sanitizes rich note HTML while preserving the nodes used by the editor. */
+export function sanitizeNoteHtml(html: string): string {
+  return sanitizeWithTags(html);
+}
+
+/** Keeps block wrappers while importing clipboard HTML, then converts it. */
+function sanitizeClipboardHtml(html: string): string {
+  return sanitizeWithTags(html, CLIPBOARD_BLOCK_TAGS);
 }
 
 const ATTACHMENT_IMAGE = /!\[([^\]]*)\]\(attachment:\/\/([^)\s]+)\)/g;
@@ -162,7 +198,7 @@ export function looksLikeMarkdown(value: string): boolean {
 }
 
 const STRUCTURED_HTML =
-  /<(table|thead|tbody|tr|td|th|ul|ol|li|pre|blockquote|h[1-6]|hr|dl|figure)\b/i;
+  /<(table|thead|tbody|tr|td|th|ul|ol|li|pre|blockquote|h[1-6]|hr|dl|figure|div|section|article|header|footer|main|aside)\b/i;
 
 /** True when HTML carries block structure that Markdown can represent. */
 export function htmlHasBlockStructure(html: string): boolean {
@@ -215,17 +251,19 @@ function normalizeClipboardText(value: string): string {
  * copy button, GitHub, documentation sites), because that is the source the
  * user expects to see and copy later. Otherwise the rich HTML flavour is
  * sanitized and converted back to Markdown, which keeps tables and lists from
- * ordinary page selections. Literal prose stays literal.
+ * ordinary page selections. The stored HTML is then rendered from that Markdown
+ * so both representations always agree. Literal prose stays literal.
  */
 export function clipboardToNote({ html, text }: ClipboardPayload): NoteClipboardContent {
   const plain = normalizeClipboardText(text ?? '');
-  const rich = html?.trim() ? sanitizeNoteHtml(html) : '';
+  const rich = html?.trim() ? sanitizeClipboardHtml(html) : '';
 
   if (plain && looksLikeBlockMarkdown(plain)) {
     return { markdown: plain, html: markdownToHtml(plain) };
   }
   if (rich) {
-    return { markdown: htmlToMarkdown(rich), html: rich };
+    const markdown = htmlToMarkdown(rich);
+    return { markdown, html: markdownToHtml(markdown) };
   }
   if (!plain) return { markdown: '', html: '' };
   return { markdown: plain, html: plainTextToHtml(plain) };
@@ -382,9 +420,65 @@ function getTurndown(): TurndownService {
     emDelimiter: '*',
     strongDelimiter: '**',
     linkStyle: 'inlined',
-    br: '  \n',
+    // Turndown appends the newline itself. Including one here produced a blank
+    // line after every <br>, which is the extra vertical spacing seen after a
+    // ChatGPT selection paste.
+    br: '  ',
   });
   service.use(gfm);
+  service.addRule('clipcanvasTableCell', {
+    // TipTap wraps cell text in paragraphs, which makes the GFM cell rule emit
+    // line breaks inside the pipe row. Flatten to a single line and escape
+    // pipes so the table keeps its shape.
+    filter: ['th', 'td'],
+    replacement: (content, node) => {
+      const parent = node.parentNode as Element | null;
+      const index = parent ? Array.prototype.indexOf.call(parent.childNodes, node) : 0;
+      const text = content
+        .replace(/\s*\n+\s*/g, ' ')
+        .replace(/\|/g, '\\|')
+        .trim();
+      return `${index === 0 ? '| ' : ' '}${text} |`;
+    },
+  });
+  service.addRule('clipcanvasCodeBlock', {
+    // Code copied from ChatGPT and many documentation sites wraps the code in
+    // divs/spans inside <pre> instead of using <pre><code>. Turndown's built-in
+    // fenced rule requires a CODE child, so those blocks arrived as plain text.
+    filter: 'pre',
+    replacement: (_content, node) => {
+      const element = node as HTMLElement;
+      const code = element.querySelector('code') ?? element;
+      const className = `${element.getAttribute('class') ?? ''} ${
+        code.getAttribute('class') ?? ''
+      }`;
+      const language = /(?:^|\s)language-([\w+#.-]+)/.exec(className)?.[1] ?? '';
+      // Block wrappers inside <pre> (ChatGPT uses <div><span>) have no newline
+      // in textContent, so adjacent lines would merge. Rebuild the line breaks
+      // from the markup instead.
+      const raw = decodeBasicEntities(
+        (code.innerHTML ?? '')
+          // A <br> just before a closing block is a trailing break, not an
+          // extra empty line.
+          .replace(
+            /<br\s*\/?>(?=(?:<\/(?:span|strong|em|b|i|u|s|del|code|a)>)*<\/(?:div|p|li|tr|h[1-6]|section|article|figure|pre)>)/gi,
+            '',
+          )
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/(?:div|p|li|tr|h[1-6]|section|article|figure|pre)>/gi, '\n')
+          .replace(/<[^>]+>/g, ''),
+      )
+        .replace(/\r\n?/g, '\n')
+        .replace(/^\n+|\n+$/g, '');
+      if (!raw.trim()) return '';
+      const longestRun = Math.max(
+        0,
+        ...(raw.match(/`{3,}/g) ?? []).map((run) => run.length),
+      );
+      const fence = '`'.repeat(Math.max(3, longestRun + 1));
+      return `\n\n${fence}${language}\n${raw}\n${fence}\n\n`;
+    },
+  });
   service.addRule('clipcanvasListItemParagraph', {
     // ChatGPT wraps each list item in a paragraph. Turndown then emits a blank
     // line between items (a "loose" list), which is the extra spacing users see
@@ -424,18 +518,68 @@ function getTurndown(): TurndownService {
   return service;
 }
 
+/**
+ * Normalizes whitespace in converted Markdown without touching fenced code,
+ * where trailing spaces and consecutive blank lines are meaningful.
+ */
+function tidyMarkdown(value: string): string {
+  const lines: string[] = [];
+  let fence: string | null = null;
+  let blankLines = 0;
+
+  for (const line of value.split('\n')) {
+    const fenceMatch = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (fenceMatch) {
+      const marker = fenceMatch[1];
+      if (!fence) fence = marker;
+      else if (marker[0] === fence[0] && marker.length >= fence.length) fence = null;
+      lines.push(line);
+      blankLines = 0;
+      continue;
+    }
+    if (fence) {
+      lines.push(line);
+      continue;
+    }
+    if (!line.trim()) {
+      blankLines += 1;
+      if (blankLines === 1) lines.push('');
+      continue;
+    }
+    blankLines = 0;
+    // Trim trailing indentation, but keep Markdown's two-space hard break.
+    lines.push(line.replace(/[ \t]+$/, (match) => (match === '  ' ? match : '')));
+  }
+
+  return lines
+    .join('\n')
+    // A hard break at the end of a paragraph is redundant before the blank line
+    // that already separates blocks.
+    .replace(/ {2}\n\n/g, '\n\n')
+    .replace(/^\n+|\n+$/g, '')
+    .trim();
+}
+
+/**
+ * TipTap renders tables with a `<colgroup>` before `<tbody>` and no `<thead>`.
+ * turndown-plugin-gfm only recognizes a heading row when it is the first child
+ * of the table (or of the first tbody), so the layout elements made it keep the
+ * table as raw HTML. They carry nothing Markdown can express.
+ */
+function stripTableLayoutMarkup(html: string): string {
+  return html
+    .replace(/<colgroup\b[^>]*>[\s\S]*?<\/colgroup>/gi, '')
+    .replace(/<col\b[^>]*\/?>/gi, '');
+}
+
 export function htmlToMarkdown(html: string): string {
   if (!html.trim()) return '';
   let value: string;
   try {
-    value = getTurndown().turndown(html);
+    value = getTurndown().turndown(stripTableLayoutMarkup(html));
   } catch {
     // A malformed fragment must never break saving an edit.
     value = decodeBasicEntities(html.replace(/<[^>]+>/g, ' '));
   }
-  return value
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/^\n+|\n+$/g, '')
-    .trim();
+  return tidyMarkdown(value);
 }

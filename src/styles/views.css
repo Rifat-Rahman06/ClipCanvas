@@ -123,7 +123,7 @@
   border: 1px solid var(--line);
   border-radius: 18px;
   background:
-    radial-gradient(circle at 50% -15%, rgba(215, 231, 223, 0.6), transparent 48%),
+    radial-gradient(circle at 50% -15%, var(--accent-wash-strong), transparent 48%),
     var(--paper);
   box-shadow: var(--shadow-sm);
   text-align: center;
@@ -137,7 +137,7 @@
 }
 
 .welcome-mark .clipcanvas-mark {
-  filter: drop-shadow(0 4px 10px rgba(23, 74, 62, 0.18));
+  filter: var(--filter-brand-lg);
 }
 
 .welcome-panel h1 {
@@ -636,7 +636,7 @@
   padding: 0 3px;
   border-radius: 999px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 8.5px;
 }
 
@@ -830,8 +830,8 @@
 mark {
   padding: 0 1px;
   border-radius: 2px;
-  background: #efe4b9;
-  color: inherit;
+  background: var(--mark-bg);
+  color: var(--mark-ink);
 }
 
 .search-start {
@@ -1025,7 +1025,7 @@ mark {
   padding: 10px;
   border: 1px solid var(--accent-soft-2);
   border-radius: 7px;
-  background: #f4f9f6;
+  background: var(--accent-wash-bg);
   color: var(--accent-ink);
 }
 
@@ -1195,7 +1195,7 @@ mark {
   width: 16px;
   height: 16px;
   padding: 0;
-  border: 1px solid rgba(31, 37, 31, 0.14);
+  border: 1px solid var(--line-strong);
   border-radius: 50%;
   cursor: pointer;
 }

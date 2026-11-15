@@ -1,4 +1,4 @@
-import type { AppSettings, EditorMode } from '../../types';
+import type { AppSettings, EditorMode, ThemeMode } from '../../types';
 import {
   AUTOSAVE_DELAY_SECONDS_DEFAULT,
   AUTOSAVE_DELAY_SECONDS_MAX,
@@ -14,6 +14,7 @@ import {
   SINGLE_CLICK_ZOOM_DEFAULT,
   SINGLE_CLICK_ZOOM_MAX,
   SINGLE_CLICK_ZOOM_MIN,
+  THEME_DEFAULT,
   TOUCHPAD_ZOOM_SENSITIVITY_DEFAULT,
   TOUCHPAD_ZOOM_SENSITIVITY_MAX,
   TOUCHPAD_ZOOM_SENSITIVITY_MIN,
@@ -84,12 +85,17 @@ function normalizeHighlightColor(value: unknown): string {
   return NOTE_HIGHLIGHT_COLOR_DEFAULT;
 }
 
+function normalizeTheme(value: unknown): ThemeMode {
+  return value === 'dark' || value === 'light' ? value : THEME_DEFAULT;
+}
+
 export function defaultSettings(): AppSettings {
   return {
     schemaVersion: SCHEMA_VERSION,
     lastBackupAt: null,
     lastImportAt: null,
     editorMode: 'write',
+    theme: THEME_DEFAULT,
     editorFontSize: EDITOR_FONT_SIZE_DEFAULT,
     autosaveDelaySeconds: AUTOSAVE_DELAY_SECONDS_DEFAULT,
     singleClickZoom: SINGLE_CLICK_ZOOM_DEFAULT,
@@ -122,6 +128,7 @@ export function normalizeSettings(
         ? new Date(value.lastImportAt).toISOString()
         : null,
     editorMode,
+    theme: normalizeTheme(value.theme),
     editorFontSize: normalizeEditorFontSize(value.editorFontSize),
     autosaveDelaySeconds: normalizeAutosaveDelaySeconds(value.autosaveDelaySeconds),
     singleClickZoom: normalizeSingleClickZoom(value.singleClickZoom),

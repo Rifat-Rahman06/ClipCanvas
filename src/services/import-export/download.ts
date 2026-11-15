@@ -22,7 +22,10 @@ function anchorDownload(filename: string, json: string): void {
 }
 
 function anchorTextDownload(filename: string, text: string): void {
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const type = /\.md$/i.test(filename)
+    ? 'text/markdown;charset=utf-8'
+    : 'text/plain;charset=utf-8';
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
@@ -94,8 +97,11 @@ export function readJsonFile(file: File): Promise<string> {
  * an extension context the anchor fallback still saves the file.
  */
 export async function downloadTextFile(filename: string, text: string): Promise<void> {
-  const safeName = safeDownloadName(filename) || 'note.txt';
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const safeName = safeDownloadName(filename) || 'note.md';
+  const type = /\.md$/i.test(safeName)
+    ? 'text/markdown;charset=utf-8'
+    : 'text/plain;charset=utf-8';
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
 
   if (typeof chrome !== 'undefined' && chrome.downloads?.download) {

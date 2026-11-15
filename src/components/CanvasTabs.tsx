@@ -1,6 +1,6 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react';
-import { Layers, Maximize2, Menu, Plus, Search, X } from 'lucide-react';
-import type { Canvas } from '../types';
+import { Layers, Maximize2, Menu, Moon, Plus, Search, Sun, X } from 'lucide-react';
+import type { Canvas, ThemeMode } from '../types';
 import { classNames } from '../lib/utils';
 import { openClipCanvasInTab } from '../services/extension/openInTab';
 import { IconButton } from './Button';
@@ -11,6 +11,8 @@ interface CanvasTabsProps {
   view: 'canvas' | 'search' | 'settings';
   showSidebarButton: boolean;
   pendingCanvasIds: Set<string>;
+  theme: ThemeMode;
+  onToggleTheme: () => void;
   onToggleSidebar: () => void;
   onSelectTab: (canvasId: string) => void;
   onCloseTab: (canvasId: string) => void;
@@ -24,6 +26,8 @@ export function CanvasTabs({
   view,
   showSidebarButton,
   pendingCanvasIds,
+  theme,
+  onToggleTheme,
   onToggleSidebar,
   onSelectTab,
   onCloseTab,
@@ -127,6 +131,14 @@ export function CanvasTabs({
       <div className="topbar-actions">
         <IconButton label="Search current canvas" onClick={onSearch} size="sm">
           <Search size={17} />
+        </IconButton>
+        <IconButton
+          label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          onClick={onToggleTheme}
+          size="sm"
+          aria-pressed={theme === 'dark'}
+        >
+          {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
         </IconButton>
         <IconButton
           label="Open ClipCanvas in a new tab"

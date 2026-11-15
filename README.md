@@ -43,6 +43,7 @@ Requires Chrome/Edge 116 or newer (`sidePanel` API).
 - Select text on a regular webpage, then right-click the selection and choose **Save Selection to ClipCanvas**.
 - A dedicated **Save Selection** popup opens with the passage pre-filled. It never pulls the side panel open.
 - Edit the passage, choose or create a canvas, then add it to an existing element or create a new one.
+- The popup pre-selects the canvas you last worked in (marked **Recent** and listed first), so captures land where you expect without extra clicks.
 - Page formatting is converted to Markdown so headings, lists, emphasis, quotes, code, and tables keep their structure. Links are kept as plain text.
 - The toolbar icon opens the notebook side panel only. It never starts a capture.
 
@@ -55,6 +56,11 @@ Requires Chrome/Edge 116 or newer (`sidePanel` API).
 - Click an element to zoom in and start editing. Drag elements to reposition them and resize elements from their handles.
 - Use the canvas controls to pan, zoom, fit the canvas to the view, and adjust touchpad zoom sensitivity.
 - Search inside the current canvas with the canvas search control.
+
+### Appearance
+
+- The top-bar sun/moon button switches between the warm light palette and a comfortable dark theme for reading and writing.
+- The choice is saved with the notebook, applies to the capture popup too, and survives reloads.
 
 ### Writing
 
@@ -173,7 +179,7 @@ The suites run against `fake-indexeddb`, so no browser is required. Coverage inc
 - **Restricted pages cannot be read.** Chrome internal pages, the Chrome Web Store, other extensions' pages, and Chrome's built-in PDF viewer block script injection.
 - **PDF selections require copy/paste.** Select the text in the PDF, copy it, then paste it into a ClipCanvas element.
 - **Local files need permission.** To capture from `file://` pages, enable **Allow access to file URLs** in the extension's details page.
-- **Imports are capped at 64 MB.** Larger files are rejected before parsing.
+- **Very large imports depend on available memory.** Backups are no longer rejected by a fixed file-size cap; the file is parsed and decoded in memory, so notebooks with many large images need enough free memory and storage.
 - **No cloud or sync.** Data lives in one browser profile. Export regularly; clearing extension data deletes the notebook.
 - **Single-window assumption.** Canvas-tab layout is stored per profile, not per window.
 - **Capture keeps text formatting only.** Page snapshots, annotations, and source images are out of scope.

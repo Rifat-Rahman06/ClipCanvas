@@ -61,6 +61,7 @@ export function makeDataset(): NotebookDataset {
       lastBackupAt: '2026-02-03T00:00:00.000Z',
       lastImportAt: null,
       editorMode: 'write',
+      theme: 'light',
       editorFontSize: 16,
       autosaveDelaySeconds: 1,
       singleClickZoom: 1,

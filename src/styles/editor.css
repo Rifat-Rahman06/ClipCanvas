@@ -105,7 +105,7 @@
 }
 
 .note-title-input::placeholder {
-  color: #c1beb3;
+  color: var(--placeholder-strong);
 }
 
 .note-title-input:focus,
@@ -152,7 +152,7 @@
 }
 
 .note-content-input::placeholder {
-  color: #b9b5a9;
+  color: var(--placeholder);
   font-style: italic;
 }
 
@@ -225,7 +225,7 @@
 .markdown-body a {
   color: var(--accent);
   text-decoration: underline;
-  text-decoration-color: #a9c7b8;
+  text-decoration-color: var(--link-underline);
   text-underline-offset: 2px;
 }
 

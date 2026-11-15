@@ -125,12 +125,15 @@ describe('backup creation and validation', () => {
     expect(analysis.noteIdConflicts).toBe(1);
   });
 
-  it('rejects backups that are too large before reading them', async () => {
+  it('reads backups larger than the old 64 MB import limit', async () => {
+    const backup = createBackup(makeDataset(), '2026-10-27T12:00:00.000Z');
+    const json = serializeBackup(backup);
     const hugeFile = {
-      size: 80 * 1024 * 1024,
-      text: async () => '',
+      size: 200 * 1024 * 1024,
+      text: async () => json,
     } as File;
     const { readBackupFile } = await import('../src/services/import-export/backup');
-    await expect(readBackupFile(hugeFile)).rejects.toThrow(/larger than/i);
+    const parsed = await readBackupFile(hugeFile);
+    expect(parsed.data.notes).toHaveLength(2);
   });
 });

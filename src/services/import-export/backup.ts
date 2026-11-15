@@ -25,8 +25,6 @@ import { normalizeSettings } from '../db/settings';
 import { DEFAULT_CANVAS_NAME, defaultCanvasViewport, LIMITS } from '../db/repository';
 import { getBackupAttachments } from '../db/attachments';
 
-export const MAX_BACKUP_BYTES = 64 * 1024 * 1024;
-
 export class BackupValidationError extends Error {
   readonly issues: string[];
 
@@ -471,8 +469,6 @@ export function validateBackup(raw: unknown): ValidatedBackup {
         typeof rawAttachment.dataBase64 === 'string' ? rawAttachment.dataBase64 : '';
       if (!dataBase64) {
         issues.push(`Attachment #${index + 1} is missing its image bytes.`);
-      } else if (dataBase64.length > 48 * 1024 * 1024) {
-        issues.push(`Attachment #${index + 1} is too large to import.`);
       }
       attachments.push({
         id,
@@ -528,11 +524,6 @@ export function parseBackupJson(text: string): ValidatedBackup {
 }
 
 export async function readBackupFile(file: File): Promise<ValidatedBackup> {
-  if (file.size > MAX_BACKUP_BYTES) {
-    throw new BackupValidationError([
-      `This file is larger than the ${Math.round(MAX_BACKUP_BYTES / 1024 / 1024)} MB import limit.`,
-    ]);
-  }
   let text: string;
   try {
     text = await file.text();

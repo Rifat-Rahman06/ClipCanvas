@@ -9,6 +9,7 @@ import {
   TableRow,
 } from '@tiptap/extension-table';
 import type { EditorProps, EditorView } from '@tiptap/pm/view';
+import type { Transaction } from '@tiptap/pm/state';
 import { createAttachment } from '../../services/db/attachments';
 import { compressImage } from '../../lib/images';
 import {
@@ -129,7 +130,11 @@ export function RichTextEditor({
   // replace its options while a transaction is being handled, which is what
   // used to knock the caret out of the document after pressing Enter.
   const handleEditorUpdate = useCallback(
-    ({ editor: current }: { editor: Editor }) => {
+    ({ editor: current, transaction }: { editor: Editor; transaction: Transaction }) => {
+      // Focusing the editor and moving the caret also emit `update`. Only a
+      // document change is an edit; treating selection changes as edits replaced
+      // the canonical Markdown with a lossy HTML round-trip.
+      if (!transaction.docChanged) return;
       const html = current.getHTML();
       lastEditorHtmlRef.current = html;
       onChangeRef.current(html, textFromHtml(html));

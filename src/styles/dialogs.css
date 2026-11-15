@@ -9,7 +9,7 @@
   justify-content: center;
   padding: 24px;
   overflow-y: auto;
-  background: rgba(24, 30, 24, 0.38);
+  background: var(--overlay);
   backdrop-filter: blur(2px);
   animation: fade-in 140ms var(--ease);
 }
@@ -97,7 +97,7 @@
   gap: 8px;
   padding: 12px 17px;
   border-top: 1px solid var(--line);
-  background: linear-gradient(var(--surface-muted), #f4f2eb);
+  background: linear-gradient(var(--surface-muted), var(--dialog-footer-to));
 }
 
 .dialog-footer-spacer {
@@ -395,13 +395,13 @@
 
 .import-mode.is-selected {
   border-color: var(--accent);
-  background: #f5faf7;
+  background: var(--accent-wash-bg);
   box-shadow: 0 0 0 1px var(--accent);
 }
 
 .import-mode.is-danger {
   border-color: var(--danger);
-  background: #fdf6f4;
+  background: var(--danger-bg);
   box-shadow: 0 0 0 1px var(--danger);
 }
 
@@ -506,7 +506,7 @@
 
 .import-warning p {
   margin: 3px 0 8px;
-  color: #7d3d35;
+  color: var(--danger);
   font-size: 10.2px;
   line-height: 1.5;
 }
@@ -522,7 +522,7 @@
   padding: 9px 10px;
   border: 1px solid var(--accent-soft-2);
   border-radius: var(--radius-sm);
-  background: #f4f9f6;
+  background: var(--accent-wash-bg);
   color: var(--accent-ink);
   font-size: 10.4px;
   line-height: 1.5;
@@ -573,7 +573,7 @@
 }
 
 .import-error-detail + .text-button:hover {
-  background: rgba(166, 66, 58, 0.08);
+  background: var(--danger-tint-hover);
 }
 
 .import-progress {

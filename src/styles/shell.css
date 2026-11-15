@@ -24,7 +24,7 @@
   z-index: 60;
   width: min(86vw, 304px);
   flex-basis: auto;
-  box-shadow: 18px 0 40px rgba(31, 37, 31, 0.16);
+  box-shadow: var(--shadow-drawer);
   animation: sidebar-slide-in 180ms var(--ease);
 }
 
@@ -45,7 +45,7 @@
   z-index: 55;
   padding: 0;
   border: none;
-  background: rgba(24, 30, 24, 0.32);
+  background: var(--overlay-soft);
   animation: fade-in 160ms var(--ease);
 }
 
@@ -71,7 +71,7 @@
 
 .clipcanvas-mark {
   flex: 0 0 auto;
-  filter: drop-shadow(0 1px 1px rgba(23, 74, 62, 0.12));
+  filter: var(--filter-brand);
 }
 
 .brand-copy {
@@ -147,7 +147,7 @@
   height: 16px;
   padding: 0 4px;
   border-radius: 999px;
-  background: rgba(31, 37, 31, 0.055);
+  background: var(--tint-badge);
   color: var(--ink-400);
   font-size: 9px;
   letter-spacing: 0;
@@ -183,7 +183,7 @@
 }
 
 .project-row:hover {
-  background: rgba(31, 37, 31, 0.045);
+  background: var(--tint-hover);
 }
 
 .project-group.is-active > .project-row {
@@ -353,7 +353,7 @@
 }
 
 .sidebar-canvas-row:hover {
-  background: rgba(31, 37, 31, 0.045);
+  background: var(--tint-hover);
 }
 
 .sidebar-canvas-row.is-active {
@@ -422,7 +422,7 @@
 }
 
 .canvas-row:hover {
-  background: rgba(31, 37, 31, 0.045);
+  background: var(--tint-hover);
   color: var(--ink-700);
 }
 
@@ -468,7 +468,7 @@
 }
 
 .note-row:hover {
-  background: rgba(31, 37, 31, 0.045);
+  background: var(--tint-hover);
 }
 
 .note-row.is-active {
@@ -554,7 +554,7 @@
   flex: 0 0 auto;
   padding: 9px 9px 11px;
   border-top: 1px solid var(--line);
-  background: rgba(242, 240, 233, 0.82);
+  background: var(--sidebar-footer-bg);
 }
 
 .sidebar-nav {
@@ -583,7 +583,7 @@
 }
 
 .sidebar-nav-item:hover {
-  background: rgba(31, 37, 31, 0.045);
+  background: var(--tint-hover);
   color: var(--ink-800);
 }
 
@@ -626,7 +626,7 @@
   height: 46px;
   padding: 0 7px 0 4px;
   border-bottom: 1px solid var(--line);
-  background: linear-gradient(var(--surface-raised), #fdfcf8);
+  background: linear-gradient(var(--surface-raised), var(--topbar-to));
 }
 
 .topbar-leading {
@@ -777,7 +777,7 @@
 }
 
 .note-tab-close:hover {
-  background: rgba(31, 37, 31, 0.07);
+  background: var(--tint-active);
   color: var(--ink-700);
 }
 
@@ -877,8 +877,8 @@
   z-index: 400;
   padding: 7px 12px;
   border-radius: 999px;
-  background: var(--ink-900);
-  color: #fff;
+  background: var(--tooltip-bg);
+  color: var(--tooltip-ink);
   font-size: 11px;
   font-weight: 550;
   transform: translateX(-50%);
