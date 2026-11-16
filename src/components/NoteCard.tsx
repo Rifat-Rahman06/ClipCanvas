@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Editor } from '@tiptap/react';
+import { TextSelection } from '@tiptap/pm/state';
 import { getAttachmentUrl } from '../services/db/attachments';
 import type {
   Note,
@@ -277,9 +278,19 @@ export function NoteCard({
           top: anchor.y,
         });
         if (position) {
+          // `posAtCoords` can return a structural position: between two blocks
+          // (parent is `doc`) or inside a table cell's padding (parent is
+          // `tableCell`). Wrapping that raw position in a TextSelection makes
+          // ProseMirror warn that the endpoint has no inline content, and the
+          // caret can end up misplaced. Snap it to the closest real text
+          // position first; a normal click inside text is left untouched.
+          const $pos = editor.state.doc.resolve(position.pos);
+          const target = $pos.parent.inlineContent
+            ? position.pos
+            : TextSelection.near($pos, 1).from;
           editor
             .chain()
-            .setTextSelection(position.pos)
+            .setTextSelection(target)
             .focus(undefined, { scrollIntoView: false })
             .run();
           return;
