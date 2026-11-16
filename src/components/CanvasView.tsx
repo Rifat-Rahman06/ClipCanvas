@@ -1330,6 +1330,17 @@ function CanvasSurface({
     addCanvasImages(images, event.clientX, event.clientY);
   };
 
+  const leaveEditorSession = useCallback(() => {
+    clearEditZoomTimer();
+    setEditingNoteId(null);
+    setResizingNoteId(null);
+    // Drop the editor's stale highlight as well, so the deselected element no
+    // longer looks focused.
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) selection.removeAllRanges();
+    onDeselectNote();
+  }, [clearEditZoomTimer, onDeselectNote]);
+
   const handlePaneClick = useCallback(() => {
     const pressOrigin = pressOriginRef.current;
     pressOriginRef.current = null;
@@ -1346,30 +1357,42 @@ function CanvasSurface({
     // intentional request to leave the editor.
     if (performance.now() - viewportInteractedAtRef.current < 180) return;
 
-    clearEditZoomTimer();
-    setEditingNoteId(null);
-    setResizingNoteId(null);
-    // Drop the editor's stale highlight as well, so the deselected element no
-    // longer looks focused.
-    const selection = window.getSelection();
-    if (selection && !selection.isCollapsed) selection.removeAllRanges();
-    onDeselectNote();
-  }, [clearEditZoomTimer, onDeselectNote]);
+    leaveEditorSession();
+  }, [leaveEditorSession]);
 
   const handleCanvasPointerDownCapture = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       const target = event.target;
-      pressOriginRef.current =
+      const insideNote =
         target instanceof Element &&
         Boolean(
           target.closest(
             '.note-card, .note-anchored-toolbar, .note-resize-handle, .note-edge-resize, [contenteditable="true"]',
           ),
+        );
+      pressOriginRef.current = insideNote ? { insideNote: true } : null;
+
+      // React Flow only reports a pane click when the pointer stays within a
+      // pixel while the button is down; a physical mouse drifts more than that,
+      // d3-zoom treats the press as a pan, and d3-drag swallows the click. So
+      // deselect on the press itself instead of waiting for the pane click.
+      if (event.button !== 0 || insideNote) return;
+      if (!(target instanceof Element) || !target.closest('.react-flow__pane')) return;
+      // Panels and form controls inside the viewport are not the empty pane.
+      if (
+        target.closest(
+          '.react-flow__panel, .react-flow__node, button, input, textarea, select, a, [role="menu"], [contenteditable="true"]',
         )
-          ? { insideNote: true }
-          : null;
+      )
+        return;
+      // Precision touchpads can finish a pan with a stray click; leave that
+      // click to the navigation gesture.
+      if (performance.now() - viewportInteractedAtRef.current < 180) return;
+      if (!activeNoteId && editingNoteId === null && resizingNoteId === null) return;
+
+      leaveEditorSession();
     },
-    [],
+    [activeNoteId, editingNoteId, leaveEditorSession, resizingNoteId],
   );
 
   const handleCanvasDoubleClick = useCallback(

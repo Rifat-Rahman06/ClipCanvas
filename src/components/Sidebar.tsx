@@ -7,7 +7,6 @@ import {
   Layers,
   LockKeyhole,
   Pencil,
-  Plus,
   Settings,
   Trash2,
   X,
@@ -19,7 +18,6 @@ import type { WorkspaceView } from '../hooks/useWorkspace';
 import { Brand } from './Brand';
 import { IconButton } from './Button';
 import { ActionMenu } from './ActionMenu';
-import { EmptyState } from './EmptyState';
 
 export type NoteMenuAction = 'rename' | 'move' | 'delete';
 export type CanvasMenuAction = 'delete';
@@ -33,7 +31,6 @@ interface SidebarProps {
   isMobile: boolean;
   onClose: () => void;
   onOpenSettings: () => void;
-  onCreateCanvas: () => void;
   onOpenCanvas: (canvasId: string) => void;
   onOpenNote: (noteId: string) => void;
   onCanvasAction: (canvasId: string, action: CanvasMenuAction) => void;
@@ -49,7 +46,6 @@ export function Sidebar({
   isMobile,
   onClose,
   onOpenSettings,
-  onCreateCanvas,
   onOpenCanvas,
   onOpenNote,
   onCanvasAction,
@@ -111,134 +107,117 @@ export function Sidebar({
       </div>
 
       <div className="project-tree">
-        {sortedCanvases.length === 0 ? (
-          <div className="sidebar-empty">
-            <EmptyState
-              icon={Layers}
-              title="No canvases yet"
-              description="Create a canvas, then add notes and images directly to it."
-              compact
-              action={
-                <button type="button" className="btn btn-soft btn-sm" onClick={onCreateCanvas}>
-                  <Plus size={14} />
-                  <span>New canvas</span>
+        {sortedCanvases.map((canvas) => {
+          const canvasElements = notesByCanvas.get(canvas.id) ?? [];
+          const collapsed = collapsedCanvases.has(canvas.id);
+          const isActiveCanvas = canvas.id === activeCanvasId;
+          return (
+            <section
+              className={classNames('canvas-group', 'sidebar-canvas-group', isActiveCanvas && 'is-active')}
+              key={canvas.id}
+            >
+              <div className={classNames('sidebar-canvas-row', isActiveCanvas && 'is-active')}>
+                <button
+                  type="button"
+                  className="canvas-toggle"
+                  onClick={() => toggleCanvas(canvas.id)}
+                  aria-expanded={!collapsed}
+                  aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${canvas.name}`}
+                >
+                  <ChevronRight
+                    size={13}
+                    className={classNames('project-chevron', !collapsed && 'is-open')}
+                  />
                 </button>
-              }
-            />
-          </div>
-        ) : (
-          sortedCanvases.map((canvas) => {
-            const canvasElements = notesByCanvas.get(canvas.id) ?? [];
-            const collapsed = collapsedCanvases.has(canvas.id);
-            const isActiveCanvas = canvas.id === activeCanvasId;
-            return (
-              <section
-                className={classNames('canvas-group', 'sidebar-canvas-group', isActiveCanvas && 'is-active')}
-                key={canvas.id}
-              >
-                <div className={classNames('sidebar-canvas-row', isActiveCanvas && 'is-active')}>
-                  <button
-                    type="button"
-                    className="canvas-toggle"
-                    onClick={() => toggleCanvas(canvas.id)}
-                    aria-expanded={!collapsed}
-                    aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${canvas.name}`}
-                  >
-                    <ChevronRight
-                      size={13}
-                      className={classNames('project-chevron', !collapsed && 'is-open')}
-                    />
-                  </button>
-                  <button
-                    type="button"
-                    className={classNames('canvas-row', isActiveCanvas && 'is-active')}
-                    onClick={() => onOpenCanvas(canvas.id)}
-                    aria-current={isActiveCanvas ? 'page' : undefined}
-                  >
-                    <Layers size={14} className="canvas-row-icon" aria-hidden="true" />
-                    <span className="canvas-row-name" title={canvas.name}>
-                      {canvas.name}
-                    </span>
-                    <span className="project-count">{canvasElements.length}</span>
-                  </button>
-                  <div className="canvas-row-actions">
-                    <ActionMenu
-                      label={`Actions for ${canvas.name}`}
-                      items={[
-                        {
-                          label: 'Delete canvas',
-                          icon: Trash2,
-                          danger: true,
-                          onSelect: () => onCanvasAction(canvas.id, 'delete'),
-                        },
-                      ]}
-                    />
-                  </div>
+                <button
+                  type="button"
+                  className={classNames('canvas-row', isActiveCanvas && 'is-active')}
+                  onClick={() => onOpenCanvas(canvas.id)}
+                  aria-current={isActiveCanvas ? 'page' : undefined}
+                >
+                  <Layers size={14} className="canvas-row-icon" aria-hidden="true" />
+                  <span className="canvas-row-name" title={canvas.name}>
+                    {canvas.name}
+                  </span>
+                  <span className="project-count">{canvasElements.length}</span>
+                </button>
+                <div className="canvas-row-actions">
+                  <ActionMenu
+                    label={`Actions for ${canvas.name}`}
+                    items={[
+                      {
+                        label: 'Delete canvas',
+                        icon: Trash2,
+                        danger: true,
+                        onSelect: () => onCanvasAction(canvas.id, 'delete'),
+                      },
+                    ]}
+                  />
                 </div>
+              </div>
 
-                {!collapsed ? (
-                  canvasElements.length > 0 ? (
-                    <div className="project-notes canvas-notes">
-                      {canvasElements.map((note) => {
-                        const active = note.id === activeNoteId && isActiveCanvas;
-                        const isImage = note.kind === 'image';
-                        return (
-                          <div
-                            className={classNames('note-row', active && 'is-active')}
-                            key={note.id}
+              {!collapsed ? (
+                canvasElements.length > 0 ? (
+                  <div className="project-notes canvas-notes">
+                    {canvasElements.map((note) => {
+                      const active = note.id === activeNoteId && isActiveCanvas;
+                      const isImage = note.kind === 'image';
+                      return (
+                        <div
+                          className={classNames('note-row', active && 'is-active')}
+                          key={note.id}
+                        >
+                          <button
+                            type="button"
+                            className="note-row-main"
+                            onClick={() => onOpenNote(note.id)}
+                            aria-current={active ? 'page' : undefined}
                           >
-                            <button
-                              type="button"
-                              className="note-row-main"
-                              onClick={() => onOpenNote(note.id)}
-                              aria-current={active ? 'page' : undefined}
-                            >
-                              {isImage ? (
-                                <ImageIcon size={14} className="note-row-icon" aria-hidden="true" />
-                              ) : (
-                                <FileText size={14} className="note-row-icon" aria-hidden="true" />
-                              )}
-                              <span className="note-row-title" title={noteDisplayTitle(note)}>
-                                {noteDisplayTitle(note)}
-                              </span>
-                              <span className="note-row-date">{formatShortDate(note.updatedAt)}</span>
-                            </button>
-                            <div className="note-row-actions">
-                              <ActionMenu
-                                label={`Actions for ${noteDisplayTitle(note)}`}
-                                items={[
-                                  {
-                                    label: 'Rename',
-                                    icon: Pencil,
-                                    onSelect: () => onNoteAction(note.id, 'rename'),
-                                  },
-                                  {
-                                    label: 'Move to canvas',
-                                    icon: FolderInput,
-                                    onSelect: () => onNoteAction(note.id, 'move'),
-                                  },
-                                  {
-                                    label: 'Delete note',
-                                    icon: Trash2,
-                                    danger: true,
-                                    separatorBefore: true,
-                                    onSelect: () => onNoteAction(note.id, 'delete'),
-                                  },
-                                ]}
-                              />
-                            </div>
+                            {isImage ? (
+                              <ImageIcon size={14} className="note-row-icon" aria-hidden="true" />
+                            ) : (
+                              <FileText size={14} className="note-row-icon" aria-hidden="true" />
+                            )}
+                            <span className="note-row-title" title={noteDisplayTitle(note)}>
+                              {noteDisplayTitle(note)}
+                            </span>
+                            <span className="note-row-date">{formatShortDate(note.updatedAt)}</span>
+                          </button>
+                          <div className="note-row-actions">
+                            <ActionMenu
+                              label={`Actions for ${noteDisplayTitle(note)}`}
+                              items={[
+                                {
+                                  label: 'Rename',
+                                  icon: Pencil,
+                                  onSelect: () => onNoteAction(note.id, 'rename'),
+                                },
+                                {
+                                  label: 'Move to canvas',
+                                  icon: FolderInput,
+                                  onSelect: () => onNoteAction(note.id, 'move'),
+                                },
+                                {
+                                  label: 'Delete note',
+                                  icon: Trash2,
+                                  danger: true,
+                                  separatorBefore: true,
+                                  onSelect: () => onNoteAction(note.id, 'delete'),
+                                },
+                              ]}
+                            />
                           </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="project-canvas-empty">Empty canvas</p>
-                  )
-                ) : null}
-              </section>
-            );
-          })
-        )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="project-canvas-empty">Empty canvas</p>
+                )
+              ) : null}
+            </section>
+          );
+        })}
       </div>
 
       <footer className="sidebar-footer">

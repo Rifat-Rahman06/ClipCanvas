@@ -726,7 +726,6 @@ export default function App() {
           isMobile={isMobile}
           onClose={closeSidebar}
           onOpenSettings={() => openUtility('settings')}
-          onCreateCanvas={handleNewCanvas}
           onOpenCanvas={openCanvas}
           onOpenNote={openNote}
           onCanvasAction={(canvasId, action) => {
