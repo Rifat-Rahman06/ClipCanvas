@@ -102,9 +102,9 @@ function decodeBasicEntities(value: string): string {
 /**
  * Converts meaningful newline characters inside text nodes to hard breaks.
  * Some Markdown renderers keep single newlines as literal "\n" characters in
- * the HTML. The preview honors them through `white-space: pre-wrap`, but
- * ProseMirror collapses them to spaces, so the same note looked different in
- * read and edit mode. Canonicalizing to `<br>` keeps both renderers identical.
+ * the HTML, which the browser's default white-space shrinks and ProseMirror
+ * turns into spaces, so the same note looked different in read and edit mode.
+ * Canonicalizing to `<br>` keeps both renderers identical.
  */
 function preserveTextLineBreaks(html: string): string {
   let preDepth = 0;
@@ -223,6 +223,52 @@ function normalizeTaskLists(html: string): string {
   }
 
   return template.innerHTML;
+}
+
+/**
+ * Block elements that ProseMirror's `TrailingNode` extension refuses to end a
+ * document with: when the last node is not a paragraph, it adds an empty
+ * paragraph after it.
+ */
+const TRAILING_PARAGRAPH_BLOCKS = new Set([
+  'UL',
+  'OL',
+  'TABLE',
+  'BLOCKQUOTE',
+  'PRE',
+  'HR',
+  'H1',
+  'H2',
+  'H3',
+  'H4',
+  'H5',
+  'H6',
+]);
+
+function emitsTrailingParagraph(element: Element | null): boolean {
+  if (!element) return false;
+  // The sanitizer keeps clipboard `<div>` wrappers, which ProseMirror unwraps
+  // before it decides what the document's last block is.
+  if (element.tagName === 'DIV') return emitsTrailingParagraph(element.lastElementChild);
+  return TRAILING_PARAGRAPH_BLOCKS.has(element.tagName);
+}
+
+/**
+ * Gives the read-only preview the empty paragraph the editor always keeps after
+ * a document that ends with a non-paragraph block.
+ *
+ * ProseMirror's `TrailingNode` extension guarantees `getHTML()` ends with a
+ * paragraph, so an edited note always reserved one blank line (plus the list's
+ * bottom margin) below its last bullet. HTML rendered straight from Markdown
+ * has no such paragraph, so that spacing disappeared as soon as the note lost
+ * focus. Appending it here keeps both modes identical without rewriting data.
+ */
+export function ensureTrailingParagraph(html: string): string {
+  if (typeof document === 'undefined' || !html.trim()) return html;
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  if (!emitsTrailingParagraph(template.content.lastElementChild)) return html;
+  return `${html}<p></p>`;
 }
 
 /** Converts Markdown (the canonical note source) into editor HTML. */

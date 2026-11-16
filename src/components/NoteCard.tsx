@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import type { Editor } from '@tiptap/react';
 import { TextSelection } from '@tiptap/pm/state';
 import { getAttachmentUrl } from '../services/db/attachments';
@@ -10,7 +17,12 @@ import type {
   UpdateNoteOptions,
 } from '../types';
 import { classNames, noteDisplayTitle, titleFromContent } from '../lib/utils';
-import { hasUnsupportedMarkup, markdownToHtml, serializeNoteSource } from '../lib/richText';
+import {
+  ensureTrailingParagraph,
+  hasUnsupportedMarkup,
+  markdownToHtml,
+  serializeNoteSource,
+} from '../lib/richText';
 import { capturedTextToHtml } from '../lib/insertion';
 import { useToast } from '../state/ToastContext';
 import { RichTextEditor } from './editor/RichTextEditor';
@@ -652,6 +664,12 @@ export function NoteCard({
 
 function NoteHtmlPreview({ html }: { html: string }) {
   const ref = useRef<HTMLDivElement>(null);
+  // The editor keeps an empty trailing paragraph after a list (TipTap's
+  // `TrailingNode`), so a note saved from the editor always shows one blank
+  // line below its last bullet. Stored HTML produced from Markdown has no such
+  // paragraph; adding it at render time keeps the inactive card the same height
+  // as the active one without touching the saved note.
+  const previewHtml = useMemo(() => ensureTrailingParagraph(html), [html]);
 
   useEffect(() => {
     const root = ref.current;
@@ -670,8 +688,8 @@ function NoteHtmlPreview({ html }: { html: string }) {
     };
   }, [html]);
 
-  const hasImage = html.includes('<img');
-  const hasText = html
+  const hasImage = previewHtml.includes('<img');
+  const hasText = previewHtml
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
     .trim();
@@ -686,7 +704,7 @@ function NoteHtmlPreview({ html }: { html: string }) {
         'note-html-preview',
         'markdown-body',
       )}
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: previewHtml }}
     />
   );
 }

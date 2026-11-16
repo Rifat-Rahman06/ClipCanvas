@@ -218,7 +218,6 @@
 .markdown-body p,
 .markdown-body li {
   margin: 0 0 0.9em;
-  white-space: pre-wrap;
 }
 
 .markdown-body ul,

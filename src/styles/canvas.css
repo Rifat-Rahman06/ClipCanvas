@@ -403,8 +403,13 @@
   font-feature-settings: normal;
 }
 
-.note-card .rich-text-content p,
-.note-card .rich-text-content li {
+/* ProseMirror expects `white-space: pre-wrap` on its editable root. Keeping it
+   there and off the read-only preview also keeps the preview from rendering the
+   formatting whitespace that Markdown and captured HTML leave between block
+   tags (`<li>\n<p>one</p>\n</li>`). The editor drops that whitespace while
+   parsing, so with `pre-wrap` on both sides a loose list showed a blank line
+   per item in the preview that vanished as soon as the note was opened. */
+.note-card .rich-text-content.ProseMirror {
   white-space: pre-wrap;
 }
 
