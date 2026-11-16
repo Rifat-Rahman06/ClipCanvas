@@ -246,6 +246,13 @@
   box-shadow: 0 0 0 1.5px var(--accent-ring);
 }
 
+/* A faint boundary so resting notes stay distinguishable when they sit close
+   together. Invisible while the note is active or being edited. */
+.note-card:not(.is-active):not(.is-editing) {
+  outline: 1px solid var(--line-faint);
+  outline-offset: 5px;
+}
+
 /* Inline status badges stay readable at every canvas zoom level. */
 .note-badge {
   position: absolute;
