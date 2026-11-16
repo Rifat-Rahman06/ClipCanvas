@@ -1,5 +1,6 @@
 import { normalizeCapturedText } from './utils';
 import { markdownToHtml } from './richText';
+import { isTabularText, tabularTextToMarkdown } from './tabular';
 
 export interface CapturedInsertion {
   /** The exact text to hand to the textarea's native insertion command. */
@@ -23,7 +24,13 @@ export function capturedTextToHtml(value: string): string {
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-  return markdownToHtml(normalized);
+  // A tab-separated capture is a table; keep its columns instead of letting the
+  // renderer collapse the tabs into one paragraph.
+  const source =
+    isTabularText(normalized) && !/(^|\n)\s*\|[^\n|]*\|/.test(normalized)
+      ? tabularTextToMarkdown(normalized)
+      : normalized;
+  return markdownToHtml(source);
 }
 
 /**

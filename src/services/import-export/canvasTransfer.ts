@@ -44,6 +44,8 @@ export interface CanvasTransferNote {
   content: string;
   contentHtml?: string;
   contentText?: string;
+  /** Pre-WYSIWYG archive, carried so unsupported markup survives a transfer. */
+  preservedSource?: string;
   displayMode?: CanvasTransferDisplayMode;
   layout?: NoteLayout;
   browserCapture?: boolean;
@@ -203,6 +205,7 @@ function toTransferNote(note: Note): CanvasTransferNote {
     content: note.content,
     contentHtml,
     contentText: note.contentText ?? (textFromHtml(contentHtml) || note.content),
+    ...(note.preservedSource ? { preservedSource: note.preservedSource } : {}),
     displayMode: note.displayMode === 'preview' ? 'preview' : 'edit',
     layout: note.layout,
     ...(note.browserCapture === true ? { browserCapture: true } : {}),
@@ -353,6 +356,13 @@ export function validateCanvasTransfer(raw: unknown): ValidatedCanvasTransfer {
             max: LIMITS.noteContent,
             allowEmpty: true,
           });
+    const preservedSource =
+      rawNote.preservedSource == null
+        ? undefined
+        : asString(rawNote.preservedSource, `Note #${index + 1} archive`, issues, {
+            max: LIMITS.noteContent,
+            allowEmpty: true,
+          });
 
     notes.push({
       id,
@@ -361,6 +371,7 @@ export function validateCanvasTransfer(raw: unknown): ValidatedCanvasTransfer {
       content,
       contentHtml,
       contentText,
+      ...(preservedSource ? { preservedSource } : {}),
       displayMode: rawNote.displayMode === 'preview' ? 'preview' : 'edit',
       layout: readLayout(rawNote.layout),
       ...(rawNote.browserCapture === true ? { browserCapture: true } : {}),
@@ -491,6 +502,7 @@ function buildImportedNote(
     content: imported.content,
     contentHtml,
     contentText: imported.contentText ?? (textFromHtml(contentHtml) || imported.content),
+    ...(imported.preservedSource ? { preservedSource: imported.preservedSource } : {}),
     displayMode: imported.displayMode === 'preview' ? 'preview' : 'edit',
     layout: {
       ...layout,

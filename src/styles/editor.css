@@ -178,7 +178,9 @@
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3,
-.markdown-body h4 {
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
   margin: 1.45em 0 0.55em;
   color: var(--ink-900);
   font-weight: 650;
@@ -198,6 +200,21 @@
   font-size: 1.12em;
 }
 
+.markdown-body h4 {
+  font-size: 1em;
+}
+
+.markdown-body h5 {
+  font-size: 0.94em;
+}
+
+.markdown-body h6 {
+  color: var(--ink-600);
+  font-size: 0.88em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .markdown-body p,
 .markdown-body li {
   margin: 0 0 0.9em;
@@ -212,6 +229,39 @@
 
 .markdown-body li {
   margin-bottom: 0.3em;
+}
+
+/* Task lists: GFM previews and the editor's taskItem nodes share this markup. */
+.markdown-body ul[data-type='taskList'] {
+  padding-left: 0;
+  list-style: none;
+}
+
+.markdown-body ul[data-type='taskList'] > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 0.4em;
+}
+
+.markdown-body ul[data-type='taskList'] > li > label {
+  flex: 0 0 auto;
+  margin-top: 0.4em;
+}
+
+.markdown-body ul[data-type='taskList'] > li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.markdown-body ul[data-type='taskList'] > li > div > p {
+  margin-bottom: 0.35em;
+}
+
+.markdown-body li > input[type='checkbox'] {
+  margin: 0 0.15em 0 0;
+  vertical-align: middle;
+  accent-color: var(--accent);
 }
 
 .markdown-body blockquote {

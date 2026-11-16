@@ -1,3 +1,5 @@
+import { isTabularText, tabularTextToMarkdown } from '../lib/tabular';
+
 const SKIPPED_TAGS = new Set([
   'script',
   'style',
@@ -51,6 +53,21 @@ const BLOCK_TAGS = new Set([
 ]);
 
 const LIST_TAGS = new Set(['ul', 'ol']);
+
+/**
+ * Web apps that render a table with `<div>`s still describe the grid with ARIA
+ * roles. Without this the walker below emits one paragraph per cell, which is
+ * exactly the "one word per line" capture the notebook used to show.
+ */
+const GRID_TABLE_ROLES = new Set(['table', 'grid', 'treegrid']);
+const GRID_CELL_ROLES = new Set(['cell', 'gridcell', 'columnheader', 'rowheader']);
+
+/**
+ * Elements recognized as grids during the current `selectionToMarkdown` call.
+ * Rendering is a plain recursive walk, so the detected matrices are collected
+ * up front and consulted by `renderNode`.
+ */
+let gridMatrices: Map<Element, string[][]> | null = null;
 
 function tagOf(node: Node): string {
   return node.nodeType === Node.ELEMENT_NODE
@@ -183,21 +200,9 @@ function renderList(element: Element, depth = 0): string {
   return block(lines.join('\n'));
 }
 
-function renderTable(element: Element): string {
-  const rows = Array.from(element.querySelectorAll('tr'));
-  if (rows.length === 0) return '';
-  const matrix = rows.map((row) =>
-    Array.from(row.children)
-      .filter((cell) => ['td', 'th'].includes(tagOf(cell)))
-      .map((cell) =>
-        renderChildren(cell)
-          .trim()
-          .replace(/\n+/g, '<br>')
-          .replace(/\|/g, '\\|'),
-      ),
-  );
+function renderMatrix(matrix: string[][]): string {
   const width = Math.max(...matrix.map((row) => row.length));
-  if (width === 0) return '';
+  if (width === 0 || matrix.length === 0) return '';
   const normalized = matrix.map((row) => [
     ...row,
     ...Array.from({ length: width - row.length }, () => ''),
@@ -212,6 +217,24 @@ function renderTable(element: Element): string {
   return block(lines.join('\n'));
 }
 
+function renderCell(cell: Element): string {
+  return renderChildren(cell)
+    .trim()
+    .replace(/\n+/g, '<br>')
+    .replace(/\|/g, '\\|');
+}
+
+function renderTable(element: Element): string {
+  const rows = Array.from(element.querySelectorAll('tr'));
+  if (rows.length === 0) return '';
+  const matrix = rows.map((row) =>
+    Array.from(row.children)
+      .filter((cell) => ['td', 'th'].includes(tagOf(cell)))
+      .map(renderCell),
+  );
+  return renderMatrix(matrix);
+}
+
 function renderNode(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) return collapseText(node.nodeValue ?? '');
   if (node.nodeType !== Node.ELEMENT_NODE) return '';
@@ -219,6 +242,9 @@ function renderNode(node: Node): string {
   const element = node as Element;
   const tag = tagOf(element);
   if (SKIPPED_TAGS.has(tag)) return '';
+
+  const matrix = gridMatrices?.get(element);
+  if (matrix) return renderMatrix(matrix);
 
   switch (tag) {
     case 'br':
@@ -275,6 +301,139 @@ function renderNode(node: Node): string {
 }
 
 /**
+ * True when a grid cell holds a single short run of content. Multi-paragraph
+ * cells, nested tables, and lists are real table content, but they are also
+ * what card layouts and search results look like, so they are left alone.
+ */
+function isSimpleCell(cell: Element): boolean {
+  const text = collapseText(cell.textContent ?? '').trim();
+  if (!text || text.length > 120) return false;
+  for (const descendant of Array.from(cell.querySelectorAll('*'))) {
+    const tag = tagOf(descendant);
+    if (SKIPPED_TAGS.has(tag) || tag === 'table' || LIST_TAGS.has(tag)) return false;
+  }
+  // One line of content is normal; two real paragraphs are a card, not a cell.
+  return renderChildren(cell)
+    .split('\n')
+    .filter((line) => line.trim()).length <= 1;
+}
+
+/** Builds a matrix from `role="table"`/`grid` markup. */
+function ariaMatrix(table: Element): string[][] | null {
+  const rows = Array.from(table.querySelectorAll('[role="row"]')).filter((row) => {
+    for (let parent = row.parentElement; parent && parent !== table; parent = parent.parentElement) {
+      if (GRID_TABLE_ROLES.has((parent.getAttribute('role') ?? '').toLowerCase())) return false;
+    }
+    return true;
+  });
+  if (rows.length < 2) return null;
+  const matrix = rows.map((row) => {
+    const cells = Array.from(row.children).filter((child) => {
+      const role = (child.getAttribute('role') ?? '').toLowerCase();
+      return GRID_CELL_ROLES.has(role);
+    });
+    const chosen = cells.length >= 2 ? cells : Array.from(row.children);
+    return chosen.map(renderCell);
+  });
+  const width = Math.max(...matrix.map((row) => row.length));
+  if (width < 2) return null;
+  return matrix;
+}
+
+/**
+ * Detects an unlabeled grid: a container whose children are all rows of the
+ * same number of short, single-block cells. Some editors (and many sites built
+ * from `<div>`s) render tables this way without ARIA roles.
+ */
+function structuralMatrix(container: Element): string[][] | null {
+  const rows = Array.from(container.children);
+  if (rows.length < 2) return null;
+  // A list of links is a list, never a table row.
+  if (rows.some((row) => ['li', 'ul', 'ol'].includes(tagOf(row)))) return null;
+  const width = Math.max(...rows.map((row) => row.children.length));
+  if (width < 2) return null;
+  if (rows.length * width < 4) return null;
+  // Narrow rectangles are far too common in page layouts to guess about: two
+  // columns only count when the grid is at least four rows long.
+  if (width < 3 && rows.length < 4) return null;
+
+  const last = rows.length - 1;
+  const matrix: string[][] = [];
+  for (const [index, row] of rows.entries()) {
+    const cells = Array.from(row.children);
+    // A drag can start or end mid-row, so an edge row may be narrower. The
+    // missing cells are at the outer edge: left for the first row, right for
+    // the last one. A narrow row in between means this is not a grid.
+    if (cells.length !== width && index !== 0 && index !== last) return null;
+    if (!cells.every(isSimpleCell)) return null;
+    const rendered = cells.map(renderCell);
+    const blanks = Array.from({ length: width - cells.length }, () => '');
+    const leftPadded = index === 0 && cells.length < width;
+    matrix.push(leftPadded ? [...blanks, ...rendered] : [...rendered, ...blanks]);
+  }
+  // Without one full row there is no way to trust the column alignment.
+  if (!matrix.some((row) => row.every((cell) => cell !== ''))) return null;
+  return matrix;
+}
+
+/**
+ * Finds grids inside the cloned selection and records their matrices, so the
+ * recursive walker can render them as Markdown tables instead of one paragraph
+ * per cell.
+ */
+function collectGridMatrices(root: Element): Map<Element, string[][]> {
+  const found = new Map<Element, string[][]>();
+
+  const visit = (element: Element): void => {
+    if (tagOf(element) === 'table') return;
+    const role = (element.getAttribute('role') ?? '').toLowerCase();
+    const matrix =
+      GRID_TABLE_ROLES.has(role) ? ariaMatrix(element) : structuralMatrix(element);
+    if (matrix) {
+      found.set(element, matrix);
+      return;
+    }
+    for (const child of Array.from(element.children)) visit(child);
+  };
+
+  visit(root);
+  return found;
+}
+
+/** Wraps table rows or cells that were cloned without their `<table>` parent. */
+function wrapDetachedTableParts(container: HTMLElement): void {
+  const parts = Array.from(container.children).filter((child) =>
+    ['TR', 'TD', 'TH', 'TBODY', 'THEAD', 'TFOOT'].includes(child.tagName),
+  );
+  if (parts.length === 0) return;
+
+  const table = document.createElement('table');
+  const tbody = document.createElement('tbody');
+  table.appendChild(tbody);
+  let pendingRow: HTMLTableRowElement | null = null;
+
+  for (const part of parts) {
+    if (part.tagName === 'TR') {
+      tbody.appendChild(part);
+      pendingRow = null;
+    } else if (part.tagName === 'TD' || part.tagName === 'TH') {
+      // Consecutive cells belong to the same (cloned) row.
+      if (!pendingRow) {
+        pendingRow = document.createElement('tr');
+        tbody.appendChild(pendingRow);
+      }
+      pendingRow.appendChild(part);
+    } else {
+      while (part.firstElementChild) tbody.appendChild(part.firstElementChild);
+      part.remove();
+      pendingRow = null;
+    }
+  }
+
+  container.appendChild(table);
+}
+
+/**
  * Converts a copied page selection into Markdown so block structure and basic
  * emphasis survive the trip into the notebook. Anchors deliberately keep only
  * their visible text; ClipCanvas does not attach source links.
@@ -283,5 +442,28 @@ export function selectionToMarkdown(selection: Selection): string {
   if (selection.rangeCount === 0 || selection.isCollapsed) return '';
   const container = document.createElement('div');
   container.appendChild(selection.getRangeAt(0).cloneContents());
-  return renderChildren(container).replace(/^\n+/, '').replace(/\n+$/, '');
+  // A selection that starts and ends inside one table clones only its rows (or
+  // cells) without the `<table>` wrapper, which used to flatten into one
+  // paragraph per cell. Rebuild the table before rendering.
+  if (!container.querySelector('table')) wrapDetachedTableParts(container);
+  // Div-based tables (ARIA grids and app-rendered tables without a `<table>`)
+  // flatten into one paragraph per cell unless they are detected up front.
+  gridMatrices = collectGridMatrices(container);
+  let markdown: string;
+  try {
+    const rootMatrix = gridMatrices.get(container);
+    markdown = (rootMatrix ? renderMatrix(rootMatrix) : renderChildren(container))
+      .replace(/^\n+/, '')
+      .replace(/\n+$/, '');
+  } finally {
+    gridMatrices = null;
+  }
+  // Some pages render tables as block elements instead of a real `<table>`, so
+  // the walk above emits one paragraph per cell. The browser's own text copy of
+  // the same selection is tab-separated, which keeps the grid.
+  const plain = selection.toString().trim();
+  if (isTabularText(plain) && !/(^|\n)\s*\|[^\n|]*\|/.test(markdown)) {
+    return tabularTextToMarkdown(plain);
+  }
+  return markdown;
 }

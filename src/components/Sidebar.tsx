@@ -10,7 +10,6 @@ import {
   Plus,
   Settings,
   Trash2,
-  Upload,
   X,
 } from 'lucide-react';
 import type { Canvas, Note } from '../types';
@@ -35,7 +34,6 @@ interface SidebarProps {
   onClose: () => void;
   onOpenSettings: () => void;
   onCreateCanvas: () => void;
-  onImportCanvas: () => void;
   onOpenCanvas: (canvasId: string) => void;
   onOpenNote: (noteId: string) => void;
   onCanvasAction: (canvasId: string, action: CanvasMenuAction) => void;
@@ -52,7 +50,6 @@ export function Sidebar({
   onClose,
   onOpenSettings,
   onCreateCanvas,
-  onImportCanvas,
   onOpenCanvas,
   onOpenNote,
   onCanvasAction,
@@ -111,23 +108,6 @@ export function Sidebar({
           Canvases
           <span className="sidebar-section-count">{canvases.length}</span>
         </span>
-        <ActionMenu
-          label="New canvas"
-          size="sm"
-          trigger={<Plus size={15} />}
-          items={[
-            {
-              label: 'Create a New Canvas',
-              icon: Plus,
-              onSelect: onCreateCanvas,
-            },
-            {
-              label: 'Import a Canvas',
-              icon: Upload,
-              onSelect: onImportCanvas,
-            },
-          ]}
-        />
       </div>
 
       <div className="project-tree">

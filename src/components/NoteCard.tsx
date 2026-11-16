@@ -1,19 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Editor } from '@tiptap/react';
 import { getAttachmentUrl } from '../services/db/attachments';
-import type { Note, NoteContentSnapshot, NoteDisplayMode, NoteInsertion, NotePatch, UpdateNoteOptions } from '../types';
-import { classNames, noteDisplayTitle, textFromMarkdown, titleFromContent } from '../lib/utils';
-import { htmlToMarkdown, markdownToHtml, textFromHtml } from '../lib/richText';
+import type {
+  Note,
+  NoteContentSnapshot,
+  NoteInsertion,
+  NotePatch,
+  UpdateNoteOptions,
+} from '../types';
+import { classNames, noteDisplayTitle, titleFromContent } from '../lib/utils';
+import { hasUnsupportedMarkup, markdownToHtml, serializeNoteSource } from '../lib/richText';
 import { capturedTextToHtml } from '../lib/insertion';
 import { useToast } from '../state/ToastContext';
-import { MarkdownEditor } from './editor/MarkdownEditor';
 import { RichTextEditor } from './editor/RichTextEditor';
-
-/** The canonical Markdown source for a note, derived from HTML when missing. */
-function noteMarkdown(note: Note): string {
-  if (note.content && note.content.trim()) return note.content;
-  return note.contentHtml ? htmlToMarkdown(note.contentHtml) : '';
-}
 
 export type NoteCardAction = 'move' | 'delete';
 
@@ -89,27 +88,14 @@ export function NoteCard({
   onCaretActivityRef.current = onCaretActivity;
   const editorRef = useRef<Editor | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
-  const displayMode: NoteDisplayMode = note.displayMode === 'preview' ? 'preview' : 'edit';
-  // Images never have Markdown source; every other note can be edited either as
-  // Markdown (edit mode) or as rich content (preview mode).
-  const isMarkdownMode = displayMode === 'edit' && note.kind !== 'image';
   const initialHtml = note.contentHtml ?? markdownToHtml(note.content);
-  const initialMarkdown = noteMarkdown(note);
   const [editorContent, setEditorContent] = useState(initialHtml);
-  const [markdownContent, setMarkdownContent] = useState(initialMarkdown);
   const contentRef = useRef({
     html: initialHtml,
     text: note.contentText ?? note.content,
-    markdown: initialMarkdown,
   });
-  // Which surface produced the newest edit. Saves then send only that source
-  // and let the repository derive the other representation, so Markdown is
-  // never overwritten by plain text (or vice versa) mid-session.
-  const lastEditSourceRef = useRef<'markdown' | 'rich'>('markdown');
-  const displayModeRef = useRef(displayMode);
-  displayModeRef.current = displayMode;
-  const previousModeRef = useRef(displayMode);
   const titleRef = useRef(note.title);
+  const unsupportedWarnedRef = useRef(false);
   const pendingRef = useRef<NotePatch>({});
   const saveTimerRef = useRef<number | null>(null);
   const saveChainRef = useRef<Promise<void>>(Promise.resolve());
@@ -164,20 +150,11 @@ export function NoteCard({
   // live values instead of letting those actions copy stale content.
   useEffect(() => {
     const getter = (): NoteContentSnapshot => {
-      if (lastEditSourceRef.current === 'rich') {
-        return {
-          markdown: htmlToMarkdown(contentRef.current.html),
-          html: contentRef.current.html,
-          text: contentRef.current.text,
-        };
-      }
-      const markdown = contentRef.current.markdown;
+      const html = contentRef.current.html;
       return {
-        markdown,
-        // Derive fresh HTML instead of trusting the debounced cache, so a copy
-        // immediately after typing still carries the newest rendering.
-        html: markdownToHtml(markdown),
-        text: textFromMarkdown(markdown),
+        markdown: serializeNoteSource(html),
+        html,
+        text: contentRef.current.text,
       };
     };
     onRegisterLiveContent(note.id, getter);
@@ -232,7 +209,6 @@ export function NoteCard({
     // not move to another control, put it back into the document.
     window.setTimeout(() => {
       if (!editingRef.current || !activeRef.current) return;
-      if (displayModeRef.current !== 'preview') return;
       const active = document.activeElement;
       if (active instanceof Element) {
         if (active.closest('.note-card, .note-anchored-toolbar')) return;
@@ -287,11 +263,11 @@ export function NoteCard({
   }, [active, insertion, note.id, onBeginEdit]);
 
   useEffect(() => {
-    if (editing && !isMarkdownMode) setEditorMounted(true);
-  }, [editing, isMarkdownMode]);
+    if (editing) setEditorMounted(true);
+  }, [editing]);
 
   useEffect(() => {
-    if (!editing || !editor || isMarkdownMode) return;
+    if (!editing || !editor) return;
     const timer = window.setTimeout(() => {
       const anchor = editAnchorRef.current;
       editAnchorRef.current = null;
@@ -315,7 +291,7 @@ export function NoteCard({
       editor.commands.focus(undefined, { scrollIntoView: false });
     }, 30);
     return () => window.clearTimeout(timer);
-  }, [editing, editor, isMarkdownMode]);
+  }, [editing, editor]);
 
   useEffect(() => {
     if (!editing) editAnchorRef.current = null;
@@ -329,17 +305,12 @@ export function NoteCard({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
-      if (isMarkdownMode) {
-        const active = document.activeElement;
-        if (active instanceof HTMLElement) active.blur();
-      } else {
-        editor?.commands.blur();
-      }
+      editor?.commands.blur();
       onBeginResize(note.id);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [editing, editor, isMarkdownMode, note.id, onBeginResize]);
+  }, [editing, editor, note.id, onBeginResize]);
 
   useEffect(() => {
     if (!editing || !editor) return;
@@ -372,26 +343,16 @@ export function NoteCard({
   }, [editing, editor]);
 
   useEffect(() => {
-    // While editing, the active surface is the source of truth. Syncing the
-    // saved note back into it can race with autosave and replace a freshly
-    // inserted line, dropping focus and making the editor stop accepting input.
-    // Persist-only autosaves also leave `note` behind the editor until the edit
-    // session ends, so never let that stale snapshot overwrite newer local text.
+    // While editing, the TipTap document is the source of truth. Persist-only
+    // autosaves leave `note` behind the editor, so never let the persisted
+    // snapshot overwrite newer local content.
     if (editing || localDirtyRef.current) return;
     if ('contentHtml' in pendingRef.current || 'content' in pendingRef.current) return;
     const html = note.contentHtml ?? markdownToHtml(note.content);
     const text = note.contentText ?? note.content;
-    const markdown = noteMarkdown(note);
-    if (
-      html === contentRef.current.html &&
-      text === contentRef.current.text &&
-      markdown === contentRef.current.markdown
-    ) {
-      return;
-    }
-    contentRef.current = { html, text, markdown };
+    if (html === contentRef.current.html && text === contentRef.current.text) return;
+    contentRef.current = { html, text };
     setEditorContent(html);
-    setMarkdownContent(markdown);
   }, [editing, note.content, note.contentHtml, note.contentText]);
 
   const flush = useCallback(
@@ -404,18 +365,10 @@ export function NoteCard({
       const pending = pendingRef.current;
       pendingRef.current = {};
       if (options?.includeLatestContent) {
-        if (lastEditSourceRef.current === 'markdown') {
-          contentRef.current.text = textFromMarkdown(contentRef.current.markdown);
-          // Only the Markdown source is sent; the repository renders the HTML.
-          delete pending.contentHtml;
-          delete pending.contentText;
-          pending.content = contentRef.current.markdown;
-        } else {
-          // Only the rich HTML is sent; the repository derives the Markdown.
-          delete pending.content;
-          pending.contentHtml = contentRef.current.html;
-          pending.contentText = contentRef.current.text;
-        }
+        // Only the rich HTML is sent; the repository derives the Markdown source.
+        delete pending.content;
+        pending.contentHtml = contentRef.current.html;
+        pending.contentText = contentRef.current.text;
       }
       if (Object.keys(pending).length === 0) return;
 
@@ -424,11 +377,7 @@ export function NoteCard({
         !titleRef.current.trim() &&
         contentRef.current.text.trim()
       ) {
-        const titleSource =
-          lastEditSourceRef.current === 'markdown'
-            ? textFromMarkdown(contentRef.current.markdown)
-            : contentRef.current.text;
-        pending.title = titleFromContent(titleSource);
+        pending.title = titleFromContent(contentRef.current.text);
         titleRef.current = pending.title;
       }
 
@@ -499,77 +448,32 @@ export function NoteCard({
 
   const handleContentChange = useCallback(
     (html: string, text: string) => {
-      contentRef.current = { ...contentRef.current, html, text };
-      lastEditSourceRef.current = 'rich';
+      contentRef.current = { html, text };
       localDirtyRef.current = true;
       localRevisionRef.current += 1;
       reportSavePending(true);
       setEditorContent(html);
       if (text.trim()) clearDiscardTimer();
-      // The repository converts this HTML back into Markdown on save.
+      // The repository converts this HTML back into the canonical source.
       queueSave({ contentHtml: html, contentText: text });
     },
     [clearDiscardTimer, queueSave, reportSavePending],
   );
 
-  const handleMarkdownChange = useCallback(
-    (markdown: string) => {
-      contentRef.current = {
-        ...contentRef.current,
-        markdown,
-        // Cheap non-empty marker for the discard check; the accurate plain text
-        // is computed once, when the edit is flushed.
-        text: markdown.trim(),
-      };
-      lastEditSourceRef.current = 'markdown';
-      localDirtyRef.current = true;
-      localRevisionRef.current += 1;
-      reportSavePending(true);
-      setMarkdownContent(markdown);
-      if (markdown.trim()) clearDiscardTimer();
-      // The repository renders this Markdown into HTML on save.
-      queueSave({ content: markdown });
-    },
-    [clearDiscardTimer, queueSave, reportSavePending],
-  );
-
-  // Switching modes mid-session must hand the other surface the current
-  // content, otherwise a Markdown edit would not be visible in the rich editor
-  // (or vice versa) until the note is reopened.
+  // Editing drops markup the editor cannot represent from `content`, but the
+  // repository archives the original first. Tell the user once, so the archive
+  // is not the only record of what changed.
   useEffect(() => {
-    if (previousModeRef.current === displayMode) return;
-    previousModeRef.current = displayMode;
-    if (displayMode === 'edit') {
-      const markdown =
-        lastEditSourceRef.current === 'markdown'
-          ? contentRef.current.markdown
-          : htmlToMarkdown(contentRef.current.html);
-      contentRef.current.markdown = markdown;
-      setMarkdownContent(markdown);
-      return;
-    }
-    const html =
-      lastEditSourceRef.current === 'markdown'
-        ? markdownToHtml(contentRef.current.markdown)
-        : contentRef.current.html;
-    contentRef.current.html = html;
-    contentRef.current.text = textFromHtml(html);
-    setEditorContent(html);
-    editorRef.current?.commands.setContent(html, { emitUpdate: false });
-  }, [displayMode]);
-
-  // Keep the rendered HTML close behind the Markdown while it is being typed,
-  // so switching to preview (or leaving the note) never shows stale content.
-  useEffect(() => {
-    if (!editing || !isMarkdownMode) return;
-    const timer = window.setTimeout(() => {
-      const html = markdownToHtml(markdownContent);
-      contentRef.current.html = html;
-      contentRef.current.text = textFromHtml(html);
-      setEditorContent(html);
-    }, 350);
-    return () => window.clearTimeout(timer);
-  }, [editing, isMarkdownMode, markdownContent]);
+    if (!editing || unsupportedWarnedRef.current) return;
+    if (note.preservedSource) return;
+    if (!hasUnsupportedMarkup(note.content)) return;
+    unsupportedWarnedRef.current = true;
+    notify({
+      kind: 'info',
+      message:
+        "Some formatting can't be edited here. The original text is kept in this element's archive.",
+    });
+  }, [editing, note.content, note.preservedSource, notify]);
 
   const handleEditorReady = useCallback(
     (next: Editor | null) => {
@@ -582,17 +486,6 @@ export function NoteCard({
 
   useEffect(() => {
     if (!insertion || !active || insertion.noteId !== note.id) return;
-    if (isMarkdownMode) {
-      const addition = insertion.text.trim();
-      if (!addition) {
-        onInsertionApplied(insertion.nonce);
-        return;
-      }
-      const current = contentRef.current.markdown.trimEnd();
-      handleMarkdownChange(current ? `${current}\n\n${addition}` : addition);
-      onInsertionApplied(insertion.nonce);
-      return;
-    }
     if (!editor) return;
     const html = capturedTextToHtml(insertion.text);
     if (!html.trim()) {
@@ -608,19 +501,10 @@ export function NoteCard({
       onInsertionApplied(insertion.nonce);
     }, 40);
     return () => window.clearTimeout(timer);
-  }, [
-    active,
-    editor,
-    handleMarkdownChange,
-    insertion,
-    isMarkdownMode,
-    note.id,
-    onInsertionApplied,
-  ]);
+  }, [active, editor, insertion, note.id, onInsertionApplied]);
 
   const displayTitle = note.kind === 'image' ? 'Canvas image' : noteDisplayTitle(note);
-  const showEditor = active && editing && !isMarkdownMode;
-  const showMarkdown = active && editing && isMarkdownMode;
+  const showEditor = active && editing;
   const badge =
     editing || note.kind === 'image'
       ? null
@@ -651,8 +535,6 @@ export function NoteCard({
       }
       onMouseDown={(event) => {
         if (!editing) return;
-        // The Markdown textarea handles its own pointer interactions.
-        if (isMarkdownMode) return;
         const target = event.target;
         if (target instanceof Element && target.closest('.ProseMirror')) return;
         // Clicking the card's padding (or any part of the element outside the
@@ -751,24 +633,13 @@ export function NoteCard({
             />
           </div>
         ) : null}
-        {showMarkdown ? (
-          <MarkdownEditor
-            value={markdownContent}
-            placeholder="Write Markdown here…"
-            onChange={handleMarkdownChange}
-            onFocus={clearDiscardTimer}
-            onBlur={handleEditorBlur}
-          />
-        ) : null}
-        {(!showEditor || !editorMounted) && !showMarkdown ? (
-          <NoteHtmlPreview html={editorContent} mode={displayMode} />
-        ) : null}
+        {!showEditor ? <NoteHtmlPreview html={editorContent} /> : null}
       </div>
     </article>
   );
 }
 
-function NoteHtmlPreview({ html, mode }: { html: string; mode: NoteDisplayMode }) {
+function NoteHtmlPreview({ html }: { html: string }) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -803,7 +674,6 @@ function NoteHtmlPreview({ html, mode }: { html: string; mode: NoteDisplayMode }
         'rich-text-content',
         'note-html-preview',
         'markdown-body',
-        `note-display-${mode}`,
       )}
       dangerouslySetInnerHTML={{ __html: html }}
     />

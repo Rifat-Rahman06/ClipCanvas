@@ -1,6 +1,11 @@
 import type { CaptureOutcome } from '../types';
 import { normalizeCapturedText } from '../lib/utils';
-import { CAPTURE_INSERT, type CaptureInsertResponse } from '../services/capture/messages';
+import {
+  CAPTURE_INSERT,
+  CAPTURE_READ_MESSAGE,
+  CAPTURE_SELECTION_VERSION,
+  type CaptureInsertResponse,
+} from '../services/capture/messages';
 import {
   captureNoticeForUrl,
   emptySelectionNotice,
@@ -12,7 +17,6 @@ import {
   type CapturePopupPayload,
 } from '../services/capture/popupCapture';
 
-const CONTENT_READ = 'clipcanvas:read-selection';
 const POPUP_WINDOW_KEY = 'clipcanvas.capturePopupWindow.v2';
 
 const CAPTURE_MENU_ID = 'clipcanvas-capture-selection';
@@ -21,6 +25,7 @@ const POPUP_HEIGHT = 720;
 
 interface SelectionPayload {
   text: string;
+  version?: number;
 }
 
 let popupWindowId: number | null = null;
@@ -56,11 +61,29 @@ function openPanel(tab: chrome.tabs.Tab | null): void {
 async function readFromContentScript(tabId: number): Promise<string | null> {
   try {
     const response = (await chrome.tabs.sendMessage(tabId, {
-      type: CONTENT_READ,
+      type: CAPTURE_READ_MESSAGE,
     })) as SelectionPayload | undefined;
-    return response && typeof response.text === 'string' ? response.text : null;
+    if (!response || typeof response.text !== 'string') return null;
+    // A page loaded before the extension was updated still runs the old script.
+    // Treat its answer as unavailable so the injected reader below is used.
+    if (response.version !== CAPTURE_SELECTION_VERSION) return null;
+    return response.text;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Loads the bundled content script into the tab. A page that was open before
+ * the extension was installed or updated has no (or an outdated) bridge, and a
+ * plain-text injection cannot preserve table structure, so the real serializer
+ * is injected before falling back to text.
+ */
+async function injectContentScript(tabId: number): Promise<void> {
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+  } catch {
+    // Frames that forbid injection fall through to the plain-text reader.
   }
 }
 
@@ -119,6 +142,12 @@ async function captureSelection(tab: chrome.tabs.Tab | null): Promise<CaptureOut
   }
 
   let selection = await readFromContentScript(tab.id);
+  if (selection === null) {
+    // The page is running an older (or no) content script; load the current
+    // serializer and ask again before degrading to plain text.
+    await injectContentScript(tab.id);
+    selection = await readFromContentScript(tab.id);
+  }
   if (selection === null) {
     selection = await readByInjection(tab.id);
     if (selection === null) {

@@ -1,14 +1,14 @@
 import { normalizeCapturedText } from '../lib/utils';
+import { CAPTURE_READ_MESSAGE, CAPTURE_SELECTION_VERSION } from '../services/capture/messages';
 import { selectionToMarkdown } from './selectionMarkdown';
-
-const READ_MESSAGE = 'clipcanvas:read-selection';
 
 interface SelectionPayload {
   text: string;
+  version: number;
 }
 
 interface ClipCanvasContentGlobal {
-  __clipcanvasSelectionBridge?: boolean;
+  __clipcanvasSelectionBridgeV3?: boolean;
 }
 
 function readSelectionText(): string {
@@ -25,17 +25,20 @@ function readSelectionText(): string {
 }
 
 function respondWithSelection(): SelectionPayload {
-  return { text: normalizeCapturedText(readSelectionText()) };
+  return {
+    text: normalizeCapturedText(readSelectionText()),
+    version: CAPTURE_SELECTION_VERSION,
+  };
 }
 
 const globals = globalThis as typeof globalThis & ClipCanvasContentGlobal;
 
-if (!globals.__clipcanvasSelectionBridge) {
-  globals.__clipcanvasSelectionBridge = true;
+if (!globals.__clipcanvasSelectionBridgeV3) {
+  globals.__clipcanvasSelectionBridgeV3 = true;
 
   chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
     if (!message || typeof message !== 'object') return undefined;
-    if ((message as { type?: unknown }).type !== READ_MESSAGE) return undefined;
+    if ((message as { type?: unknown }).type !== CAPTURE_READ_MESSAGE) return undefined;
     try {
       sendResponse(respondWithSelection());
     } catch {

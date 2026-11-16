@@ -326,7 +326,6 @@ interface NoteNodeData extends Record<string, unknown> {
   onEditorReady: (noteId: string, editor: Editor | null) => void;
   onDiscardEmpty: (noteId: string) => void;
   onFormat: (noteId: string, action: NoteFormatAction) => void;
-  onToggleDisplayMode: (noteId: string) => void;
   onInsertSelection: () => void;
   onLayoutChange: (noteId: string, layout: NoteLayout) => void;
   /** Latest in-memory content for copy/download while an edit session is open. */
@@ -749,8 +748,9 @@ function CanvasSurface({
         apply(editor);
         return;
       }
-      // Formatting from preview mode should open the editor first. If the
-      // editor already exists but is hidden, apply once editing has switched on.
+      // Formatting a note that is not open in the editor should open it first.
+      // If the editor already exists but is hidden, apply once editing has
+      // switched on.
       pendingFormatRef.current = { noteId, action };
       handleBeginEdit(noteId);
       if (editor) {
@@ -792,21 +792,6 @@ function CanvasSurface({
     return liveContentRef.current.get(noteId)?.() ?? null;
   }, []);
 
-  const toggleDisplayMode = useCallback(
-    (noteId: string) => {
-      const note = notes.find((item) => item.id === noteId);
-      if (!note) return;
-      const next = note.displayMode === 'preview' ? 'edit' : 'preview';
-      // The mode is stored on the element, so other notes keep their own
-      // choice. Activating the element then opens the matching surface: the
-      // Markdown source in `edit` mode, the rich editor in `preview` mode.
-      void onUpdateNote(noteId, { displayMode: next }).catch(() => {
-        // The note may have been deleted while the toolbar was open.
-      });
-    },
-    [notes, onUpdateNote],
-  );
-
   const handleNoteLayoutChange = useCallback(
     (noteId: string, layout: NoteLayout) => {
       // Keep the final resize/drag geometry visible while the IndexedDB write
@@ -835,7 +820,6 @@ function CanvasSurface({
     onEditorReady: handleEditorReady,
     onDiscardEmptyNote,
     onFormat: runFormat,
-    onToggleDisplayMode: toggleDisplayMode,
     onNoteLayoutChange: handleNoteLayoutChange,
     getLiveContent,
     onRegisterLiveContent: registerLiveContent,
@@ -853,7 +837,6 @@ function CanvasSurface({
     onEditorReady: handleEditorReady,
     onDiscardEmptyNote,
     onFormat: runFormat,
-    onToggleDisplayMode: toggleDisplayMode,
     onNoteLayoutChange: handleNoteLayoutChange,
     getLiveContent,
     onRegisterLiveContent: registerLiveContent,
@@ -908,7 +891,6 @@ function CanvasSurface({
           onEditorReady: callbacks.onEditorReady,
           onDiscardEmpty: callbacks.onDiscardEmptyNote,
           onFormat: callbacks.onFormat,
-          onToggleDisplayMode: callbacks.onToggleDisplayMode,
           onInsertSelection: callbacks.onInsertSelection,
           onLayoutChange: callbacks.onNoteLayoutChange,
           getLiveContent: callbacks.getLiveContent,
@@ -965,9 +947,6 @@ function CanvasSurface({
           previous.data.insertion === data.insertion &&
           previous.data.fontSize === data.fontSize &&
           previous.data.defaultNoteWidth === data.defaultNoteWidth &&
-          // A mode toggle must reach the card even mid-session, otherwise the
-          // surface and the toolbar icon keep showing the old mode.
-          previous.data.note.displayMode === data.note.displayMode &&
           previous.style?.width === style.width &&
           previous.style?.height === style.height;
         if (keepEditingNode) return previous;
@@ -1799,7 +1778,6 @@ function NoteNode({ id, data, width, dragging }: NodeProps<NoteCanvasNode>) {
             onNoteAction={data.onNoteAction}
             onInsertSelection={data.onInsertSelection}
             onFormat={data.onFormat}
-            onToggleDisplayMode={data.onToggleDisplayMode}
           />
         </NodeToolbar>
       ) : null}

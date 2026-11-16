@@ -2,6 +2,7 @@ import { marked } from 'marked';
 import sanitizeHtml from 'sanitize-html';
 import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
+import { isTabularText, tabularTextToMarkdown } from './tabular';
 
 const NOTE_TAGS = [
   'p',
@@ -36,6 +37,10 @@ const NOTE_TAGS = [
   'td',
   'mark',
   'span',
+  // Task lists (GFM checkboxes and the editor's task-item node).
+  'label',
+  'input',
+  'div',
 ] as const;
 
 const NOTE_ATTRIBUTES: sanitizeHtml.IOptions['allowedAttributes'] = {
@@ -45,6 +50,9 @@ const NOTE_ATTRIBUTES: sanitizeHtml.IOptions['allowedAttributes'] = {
   code: ['class'],
   th: ['colspan', 'rowspan'],
   td: ['colspan', 'rowspan'],
+  ul: ['data-type'],
+  li: ['data-type', 'data-checked'],
+  input: ['type', 'checked'],
 };
 
 /**
@@ -168,6 +176,55 @@ function restoreAttachmentImages(markdown: string): string {
   });
 }
 
+/**
+ * Rewrites GFM task-list markup (`<li><input type="checkbox"> text</li>`) into the
+ * shape the TipTap task-item node parses (`li[data-type="taskItem"]` with a label,
+ * checkbox, and div), so the same HTML works for the preview and the editor.
+ */
+function normalizeTaskLists(html: string): string {
+  if (typeof document === 'undefined' || !/type=["']?checkbox/i.test(html)) return html;
+  const template = document.createElement('template');
+  template.innerHTML = html;
+
+  const findCheckbox = (element: Element): HTMLInputElement | null => {
+    for (const child of Array.from(element.children)) {
+      if (child instanceof HTMLInputElement && child.type === 'checkbox') return child;
+    }
+    const paragraph = element.firstElementChild;
+    if (paragraph instanceof HTMLParagraphElement) {
+      const nested = paragraph.querySelector(':scope > input[type="checkbox"]');
+      if (nested instanceof HTMLInputElement) return nested;
+    }
+    return null;
+  };
+
+  for (const item of Array.from(template.content.querySelectorAll('li'))) {
+    const checkbox = findCheckbox(item);
+    if (!checkbox) continue;
+    const list = item.parentElement;
+    if (!list) continue;
+    const checked = checkbox.checked;
+    checkbox.remove();
+
+    const content = document.createElement('div');
+    while (item.firstChild) content.appendChild(item.firstChild);
+
+    const label = document.createElement('label');
+    const mirror = document.createElement('input');
+    mirror.type = 'checkbox';
+    mirror.checked = checked;
+    if (checked) mirror.setAttribute('checked', '');
+    label.append(mirror, document.createElement('span'));
+
+    item.replaceChildren(label, content);
+    item.setAttribute('data-type', 'taskItem');
+    item.setAttribute('data-checked', checked ? 'true' : 'false');
+    if (list instanceof HTMLUListElement) list.setAttribute('data-type', 'taskList');
+  }
+
+  return template.innerHTML;
+}
+
 /** Converts Markdown (the canonical note source) into editor HTML. */
 export function markdownToHtml(markdown: string): string {
   if (!markdown.trim()) return '';
@@ -177,7 +234,7 @@ export function markdownToHtml(markdown: string): string {
       gfm: true,
       breaks: true,
     }) as string;
-    return sanitizeNoteHtml(rendered);
+    return sanitizeNoteHtml(normalizeTaskLists(rendered));
   } catch {
     return `<p>${escapeHtml(markdown).replace(/\n/g, '<br>')}</p>`;
   }
@@ -212,7 +269,7 @@ export function htmlHasBlockStructure(html: string): boolean {
  */
 export function isStructuredClipboard(html: string, text: string): boolean {
   if (html.trim() && htmlHasBlockStructure(html)) return true;
-  return looksLikeMarkdown(text);
+  return looksLikeMarkdown(text) || isTabularText(text);
 }
 
 /**
@@ -258,13 +315,23 @@ export function clipboardToNote({ html, text }: ClipboardPayload): NoteClipboard
   const plain = normalizeClipboardText(text ?? '');
   const rich = html?.trim() ? sanitizeClipboardHtml(html) : '';
 
-  if (plain && looksLikeBlockMarkdown(plain)) {
+  if (plain && (looksLikeBlockMarkdown(plain) || (!rich && looksLikeMarkdown(plain)))) {
     return { markdown: plain, html: markdownToHtml(plain) };
   }
+  const tabular = plain && isTabularText(plain) ? tabularTextToMarkdown(plain) : '';
   if (rich) {
     const markdown = htmlToMarkdown(rich);
+    // Keep the HTML when it produced a real Markdown table: it preserves inline
+    // formatting. A raw `<table>` (no header row) and a flattened block-per-cell
+    // selection both fall back to the tab-separated grid, which is unambiguous
+    // and stays Markdown.
+    const hasGfmTable = /(^|\n)\s*\|[^\n|]*\|/.test(markdown);
+    if (tabular && !hasGfmTable) {
+      return { markdown: tabular, html: markdownToHtml(tabular) };
+    }
     return { markdown, html: markdownToHtml(markdown) };
   }
+  if (tabular) return { markdown: tabular, html: markdownToHtml(tabular) };
   if (!plain) return { markdown: '', html: '' };
   return { markdown: plain, html: plainTextToHtml(plain) };
 }
@@ -402,15 +469,18 @@ export function appendHtml(existingHtml: string, additionHtml: string): string {
 }
 
 /**
- * HTML-to-Markdown conversion used by the editable Markdown source and the
- * "copy as Markdown" affordance. Turndown keeps the GFM structures ClipCanvas
- * stores (tables, task lists, strikethrough), and the custom rules preserve the
- * two things it does not know about: local attachments and highlights.
+ * HTML-to-Markdown conversion for the stored note source and for clipboard
+ * copies. Turndown keeps the GFM structures ClipCanvas stores (tables, task
+ * lists, strikethrough), and the custom rules preserve the things it does not
+ * know about: local attachments, highlights, underline, and task items.
+ *
+ * Two services share those rules: storage escapes literal Markdown characters
+ * so typed `*` stays literal on reopen, while copying leaves prose alone.
  */
-let turndownService: TurndownService | null = null;
+let storageTurndown: TurndownService | null = null;
+let copyTurndown: TurndownService | null = null;
 
-function getTurndown(): TurndownService {
-  if (turndownService) return turndownService;
+function createTurndown(): TurndownService {
   const service = new TurndownService({
     headingStyle: 'atx',
     hr: '---',
@@ -514,8 +584,39 @@ function getTurndown(): TurndownService {
       return `![${alt}](attachment://${id})`;
     },
   });
-  turndownService = service;
+  // The editor renders task items as
+  // `<li data-type="taskItem" data-checked="true"><label>…</label><div>…</div></li>`.
+  // GFM's rule only matches a checkbox that is a direct child of `<li>`, so it
+  // never fires here. Emit the full list marker ourselves; this rule replaces the
+  // default list-item rule for these nodes, so the bullet is not duplicated.
+  service.addRule('clipcanvasTaskItem', {
+    filter: (node) =>
+      node.nodeName === 'LI' &&
+      (node as HTMLElement).getAttribute('data-type') === 'taskItem',
+    replacement: (content, node) => {
+      const checked = (node as HTMLElement).getAttribute('data-checked') === 'true';
+      const text = content.replace(/\s*\n+\s*/g, ' ').trim();
+      return `\n${checked ? '- [x]' : '- [ ]'} ${text}\n`;
+    },
+  });
+
   return service;
+}
+
+function getStorageTurndown(): TurndownService {
+  if (!storageTurndown) storageTurndown = createTurndown();
+  return storageTurndown;
+}
+
+function getCopyTurndown(): TurndownService {
+  if (!copyTurndown) {
+    const service = createTurndown();
+    // Copying prose must not add backslashes the user never typed. Storage keeps
+    // the default escaping so literal markers stay literal on reopen.
+    service.escape = (text: string) => text;
+    copyTurndown = service;
+  }
+  return copyTurndown;
 }
 
 /**
@@ -576,10 +677,78 @@ export function htmlToMarkdown(html: string): string {
   if (!html.trim()) return '';
   let value: string;
   try {
-    value = getTurndown().turndown(stripTableLayoutMarkup(html));
+    value = getStorageTurndown().turndown(stripTableLayoutMarkup(html));
   } catch {
     // A malformed fragment must never break saving an edit.
     value = decodeBasicEntities(html.replace(/<[^>]+>/g, ' '));
   }
   return tidyMarkdown(value);
+}
+
+/**
+ * Clipboard serializer: Markdown without escaping ordinary text. Used for
+ * Ctrl+C selections inside the editor, where prose must stay prose.
+ */
+export function htmlToMarkdownForCopy(html: string): string {
+  if (!html.trim()) return '';
+  let value: string;
+  try {
+    value = getCopyTurndown().turndown(stripTableLayoutMarkup(html));
+  } catch {
+    value = decodeBasicEntities(html.replace(/<[^>]+>/g, ' '));
+  }
+  return tidyMarkdown(value);
+}
+
+/**
+ * True when the HTML is only paragraphs and line breaks, which means the source
+ * can be stored as plain text instead of Markdown.
+ */
+function isPlainTextDocument(html: string): boolean {
+  return !/<(?!\/?(?:p|br)\b)[a-z][^>]*>/i.test(html);
+}
+
+function plainTextFromParagraphs(html: string): string {
+  const withBreaks = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p\s*>/gi, '\n\n')
+    .replace(/<p\b[^>]*>/gi, '');
+  const plain = sanitizeHtml(withBreaks, {
+    allowedTags: [],
+    allowedAttributes: {},
+  });
+  return decodeBasicEntities(plain)
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * The canonical source for a stored note, derived from editor HTML.
+ *
+ * A document containing only paragraphs and line breaks is written back as plain
+ * text, so a plain note never acquires Markdown markers merely because it was
+ * edited. Anything with structure or marks becomes Markdown with escaping.
+ */
+export function serializeNoteSource(html: string): string {
+  if (!html.trim()) return '';
+  if (isPlainTextDocument(html)) return plainTextFromParagraphs(html);
+  return htmlToMarkdown(html);
+}
+
+/**
+ * True when the Markdown source contains HTML the note schema cannot represent.
+ * Those elements are already stripped before rendering, but a WYSIWYG edit would
+ * drop them from the stored source too. Used to warn once, so the archive is not
+ * the only record that something was preserved.
+ */
+export function hasUnsupportedMarkup(markdown: string): boolean {
+  if (!markdown.trim() || !/<[a-z]/i.test(markdown)) return false;
+  const allowed = new Set<string>(NOTE_TAGS);
+  // Require a real tag shape (name followed by whitespace, `/`, or `>`), so
+  // Markdown autolinks such as `<https://example.com>` are not mistaken for tags.
+  for (const match of markdown.matchAll(/<\/?([a-z][a-z0-9-]*)(?:\s[^>]*)?\s*\/?>/gi)) {
+    if (!allowed.has(match[1].toLowerCase())) return true;
+  }
+  return false;
 }

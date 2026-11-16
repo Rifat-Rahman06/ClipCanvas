@@ -11,6 +11,7 @@ import {
   ScanText,
   Search,
   Sparkles,
+  Upload,
 } from 'lucide-react';
 import type { Canvas, Note } from '../types';
 import {
@@ -28,6 +29,7 @@ interface HomeViewProps {
   notes: Note[];
   canvases: Canvas[];
   onCreateCanvas: () => void;
+  onImportCanvas: () => void;
   onOpenCanvas: (canvasId: string) => void;
   onOpenNote: (noteId: string) => void;
   onOpenSearch: () => void;
@@ -43,6 +45,7 @@ export function HomeView({
   notes,
   canvases,
   onCreateCanvas,
+  onImportCanvas,
   onOpenCanvas,
   onOpenNote,
   onOpenSearch,
@@ -81,6 +84,13 @@ export function HomeView({
               onClick={onCreateCanvas}
             >
               Create your first canvas
+            </Button>
+            <Button
+              variant="secondary"
+              icon={<Upload size={15} />}
+              onClick={onImportCanvas}
+            >
+              Import a canvas
             </Button>
           </div>
           <div className="welcome-steps">

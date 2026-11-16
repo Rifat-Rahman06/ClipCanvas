@@ -161,6 +161,7 @@ export function createBackup(
         content: note.content,
         contentHtml: note.contentHtml,
         contentText: note.contentText,
+        ...(note.preservedSource ? { preservedSource: note.preservedSource } : {}),
         displayMode: note.displayMode === 'preview' ? 'preview' : 'edit',
         layout: note.layout,
         ...(note.browserCapture === true ? { browserCapture: true } : {}),
@@ -414,6 +415,15 @@ export function validateBackup(raw: unknown): ValidatedBackup {
             allowEmpty: true,
           })
         : textFromHtml(contentHtml) || content;
+    // The pre-WYSIWYG archive travels with the note so restored backups keep the
+    // markup the editor cannot represent.
+    const preservedSource =
+      typeof rawNote.preservedSource === 'string'
+        ? asString(rawNote.preservedSource, `Note #${index + 1} archive`, issues, {
+            max: LIMITS.noteContent,
+            allowEmpty: true,
+          })
+        : undefined;
 
     notes.push({
       id,
@@ -424,6 +434,7 @@ export function validateBackup(raw: unknown): ValidatedBackup {
       content,
       contentHtml,
       contentText,
+      ...(preservedSource ? { preservedSource } : {}),
       displayMode: rawNote.displayMode === 'preview' ? 'preview' : 'edit',
       layout: readLayout(rawNote.layout),
       ...(rawNote.browserCapture === true ? { browserCapture: true } : {}),

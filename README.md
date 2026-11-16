@@ -66,15 +66,16 @@ Requires Chrome/Edge 116 or newer (`sidePanel` API).
 
 ### Writing
 
-- Every element stores its content as **Markdown**, the canonical source. Edit mode shows that source verbatim so you can type syntax directly; Preview mode renders it with a rich editor for in-place edits (for example, changing a value inside a table).
-- Use the selected-element toolbar for bold text, highlights, bullet lists (Preview mode only), switching the element between Markdown edit and rendered preview, copying, downloading the element as a Markdown file, inserting page text, and deleting the element.
-- The mode toggle shows the element's current mode: a pen for **Markdown edit** and an open book for **rendered preview**. Each element remembers its own mode.
-- Elements that are not being edited stay rendered on the canvas in both modes.
-- Pasting Markdown or rich HTML from a page or ChatGPT keeps its structure: tables stay tables, headings stay headings, and lists stay lists. A ChatGPT selection copied with **Ctrl+C** is converted from its rendered HTML back into Markdown, so it arrives without the extra blank lines and stray spacing.
+- Every element stores its content as **Markdown** (or plain text when it has no formatting), the canonical source, and is always shown rendered. There is no separate Markdown editor or preview toggle.
+- Click an element to edit it in place. Type Markdown shortcuts and they convert as you go: `#` headings, `-` and `1.` lists, `>` quotes, fenced code, `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, and `[label](url)` links.
+- Use the selected-element toolbar for bold text, highlights, bullet lists, copying, downloading the element as a Markdown file, inserting page text, and deleting the element.
+- Elements that are not being edited stay rendered on the canvas.
+- Pasting Markdown or rich HTML from a page or ChatGPT keeps its structure: tables stay tables, headings stay headings, lists stay lists, and task lists keep their checkboxes.
 - Changes autosave after a configurable pause and flush when editing ends.
 - The **insert selected text** action appends the current browser selection to the active element while preserving its formatting, including lists, headings, and tables.
-- **Copy** always writes the element's Markdown as plain text (and rendered HTML as the rich flavour when supported), so pasting into another element, editor, or chat keeps the syntax.
+- **Ctrl+C** with text selected copies just that selection as Markdown (`text/plain` only); with nothing selected it does nothing. The toolbar's **Copy** button copies the whole element's stored Markdown/plain-text source, so pasting into another element, editor, or chat keeps the syntax. Local images stay as `![alt](attachment://id)`.
 - **Download** saves the element as a `.md` file with a Save As dialog so you can choose the destination.
+- Editing rewrites the canonical source, so a note whose Markdown contains markup the editor cannot represent (for example `<details>` or merged table cells) keeps the original in a preserved-source archive the first time it is edited.
 
 ### Search
 

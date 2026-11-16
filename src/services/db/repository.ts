@@ -18,7 +18,12 @@ import {
   DEFAULT_NOTE_WIDTH_DEFAULT,
 } from '../../types';
 import { createId, nowIso } from '../../lib/utils';
-import { htmlToMarkdown, markdownToHtml, sanitizeNoteHtml, textFromHtml } from '../../lib/richText';
+import {
+  markdownToHtml,
+  sanitizeNoteHtml,
+  serializeNoteSource,
+  textFromHtml,
+} from '../../lib/richText';
 import { getDb, SETTINGS_KEY, type ClipCanvasDB } from './database';
 import { revokeAllAttachmentUrls, revokeAttachmentUrls } from './attachments';
 import { defaultSettings, normalizeSettings } from './settings';
@@ -267,6 +272,7 @@ function cleanStoredNote(note: Note): Note {
     content,
     contentHtml: rendered.contentHtml,
     contentText: rendered.contentText,
+    ...(note.preservedSource ? { preservedSource: note.preservedSource } : {}),
     displayMode: note.displayMode === 'preview' ? 'preview' : 'edit',
     layout: cleanLayout(note.layout),
     ...(note.browserCapture === true ? { browserCapture: true } : {}),
@@ -649,9 +655,22 @@ export async function updateNote(id: string, patch: NotePatch): Promise<Note> {
         ? textFromHtml(contentHtml) || content
         : existing.contentText ?? (textFromHtml(contentHtml) || content);
   if (patch.contentHtml !== undefined && patch.content === undefined) {
-    // Rich edits (preview mode) are converted back into the canonical Markdown
-    // source instead of being flattened to plain text.
-    content = cleanContent(htmlToMarkdown(contentHtml));
+    // Rich edits are converted back into the canonical source. A document made
+    // only of paragraphs is stored as plain text instead of Markdown.
+    content = cleanContent(serializeNoteSource(contentHtml));
+  }
+
+  // Archive the pre-edit source the first time an edit rewrites it, so content
+  // the editor cannot represent is never lost. Never overwritten afterwards.
+  const previousSource = existing.content ?? '';
+  let preservedSource = existing.preservedSource;
+  if (
+    preservedSource === undefined &&
+    patch.contentHtml !== undefined &&
+    previousSource.trim() !== '' &&
+    content !== previousSource
+  ) {
+    preservedSource = previousSource;
   }
 
   const projectChanged = projectId !== existing.projectId;
@@ -681,6 +700,7 @@ export async function updateNote(id: string, patch: NotePatch): Promise<Note> {
     content,
     contentHtml,
     contentText,
+    ...(preservedSource ? { preservedSource } : {}),
     displayMode:
       patch.displayMode === undefined
         ? existing.displayMode === 'preview'

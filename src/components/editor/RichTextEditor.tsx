@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { EditorContent, Mark, mergeAttributes, useEditor, type Editor } from '@tiptap/react';
+import {
+  EditorContent,
+  Extension,
+  InputRule,
+  Mark,
+  mergeAttributes,
+  useEditor,
+  type Editor,
+} from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
+import { TaskItem, TaskList } from '@tiptap/extension-list';
 import {
   Table,
   TableCell,
@@ -14,7 +23,9 @@ import { createAttachment } from '../../services/db/attachments';
 import { compressImage } from '../../lib/images';
 import {
   clipboardToNoteHtml,
+  htmlToMarkdownForCopy,
   isStructuredClipboard,
+  looksLikeBlockMarkdown,
   textFromHtml,
 } from '../../lib/richText';
 import { useToast } from '../../state/ToastContext';
@@ -32,6 +43,33 @@ const HighlightMark = Mark.create({
   },
   renderHTML({ HTMLAttributes }) {
     return ['mark', mergeAttributes(HTMLAttributes), 0];
+  },
+});
+
+/**
+ * Converts Markdown link syntax typed at the caret (`[label](https://…)`) into a
+ * real link. Bold, italic, strike, inline code, headings, lists, quotes and code
+ * fences already ship their own input rules.
+ */
+const MarkdownLinkInputRule = Extension.create({
+  name: 'markdownLinkInputRule',
+  addInputRules() {
+    return [
+      new InputRule({
+        find: /\[([^\[\]\n]+)\]\(([^()\s]+)\)$/,
+        handler: ({ state, range, match }) => {
+          const [, label, href] = match;
+          const link = state.schema.marks.link;
+          if (!link || !label) return null;
+          state.tr.replaceWith(
+            range.from,
+            range.to,
+            state.schema.text(label, [link.create({ href })]),
+          );
+          return undefined;
+        },
+      }),
+    ];
   },
 });
 
@@ -85,7 +123,7 @@ export function RichTextEditor({
   const extensions = useMemo(
     () => [
       StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
+        heading: { levels: [1, 2, 3, 4, 5, 6] },
       }),
       Table.configure({
         resizable: false,
@@ -94,8 +132,11 @@ export function RichTextEditor({
       TableRow,
       TableHeader,
       TableCell,
+      TaskList,
+      TaskItem.configure({ nested: true }),
       Placeholder.configure({ placeholder }),
       HighlightMark,
+      MarkdownLinkInputRule,
       AttachmentImage,
     ],
     [placeholder],
@@ -113,6 +154,23 @@ export function RichTextEditor({
       // caret land somewhere else. The NoteNode keeps the caret visible by
       // panning the canvas viewport instead of moving the edited node.
       handleScrollToSelection: () => true,
+      // A collapsed caret keeps native behaviour (nothing to copy). With a
+      // selection, write only Markdown to text/plain so copied content keeps its
+      // syntax and never turns into rich HTML.
+      handleDOMEvents: {
+        copy: (view, event) => {
+          if (view.state.selection.empty) return false;
+          const data = (event as ClipboardEvent).clipboardData;
+          if (!data) return false;
+          const { dom } = view.serializeForClipboard(view.state.selection.content());
+          const markdown = htmlToMarkdownForCopy((dom as HTMLElement).innerHTML);
+          if (!markdown.trim()) return false;
+          event.preventDefault();
+          data.clearData();
+          data.setData('text/plain', markdown);
+          return true;
+        },
+      },
       handlePaste: (view, event) =>
         imageTransferRef.current(view, event.clipboardData, view.state.selection.from) ||
         structuredPasteRef.current(view, event.clipboardData),
@@ -164,17 +222,20 @@ export function RichTextEditor({
     if (!editor || !editableRef.current || !data) return false;
     const html = data.getData('text/html');
     const text = data.getData('text/plain');
-    // Only take over pastes that carry block structure. A copied word, link,
-    // or phrase keeps the browser's native insertion so the caret does not
-    // jump and inline marks stay intact.
+    // Only take over pastes that carry Markdown or block structure. A copied
+    // word or phrase keeps the browser's native insertion.
     if (!isStructuredClipboard(html, text)) return false;
-    const normalized = clipboardToNoteHtml({ html, text });
-    if (!normalized.trim()) return false;
+    const normalized = clipboardToNoteHtml({ html, text }).trim();
+    if (!normalized) return false;
+    // Inline-only Markdown (e.g. `**bold**` with no block markers) must land in
+    // the current paragraph, not break it into a new one.
+    const inline = /^<p>([\s\S]*)<\/p>$/.exec(normalized);
+    const payload = inline && !looksLikeBlockMarkdown(text) ? inline[1] : normalized;
     const { from, to } = view.state.selection;
     editor
       .chain()
       .focus(undefined, { scrollIntoView: false })
-      .insertContentAt({ from, to }, normalized)
+      .insertContentAt({ from, to }, payload)
       .run();
     return true;
   };

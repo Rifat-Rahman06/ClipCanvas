@@ -106,6 +106,14 @@ export interface Note {
   /** Plain text used by search, snippets, and title fallback. */
   contentText?: string;
   /**
+   * The note's Markdown/plain source as it was immediately before its first
+   * WYSIWYG edit. The editor cannot represent every construct a Markdown file
+   * can contain, so the original is archived here the first time an edit
+   * rewrites `content`. It is never rendered and never shown in the UI; it
+   * exists so preserved-but-uneditable markup stays recoverable.
+   */
+  preservedSource?: string;
+  /**
    * Per-element canvas rendering preference. New elements start in `edit`
    * mode; `preview` shows the source-faithful capture instead.
    */

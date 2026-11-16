@@ -727,7 +727,6 @@ export default function App() {
           onClose={closeSidebar}
           onOpenSettings={() => openUtility('settings')}
           onCreateCanvas={handleNewCanvas}
-          onImportCanvas={() => requestCanvasImport('new')}
           onOpenCanvas={openCanvas}
           onOpenNote={openNote}
           onCanvasAction={(canvasId, action) => {
@@ -806,6 +805,7 @@ export default function App() {
               notes={notes}
               canvases={canvases}
               onCreateCanvas={handleNewCanvas}
+              onImportCanvas={() => requestCanvasImport('new')}
               onOpenCanvas={openCanvas}
               onOpenNote={openNote}
               onOpenSearch={openCanvasSearch}
