@@ -1114,6 +1114,15 @@ mark {
   font-size: 9.8px;
 }
 
+.settings-font-control {
+  flex: 0 0 auto;
+  width: min(100%, 210px);
+}
+
+.settings-font-control .select {
+  font-size: 12px;
+}
+
 .settings-number-control input {
   width: 62px;
   padding: 2px 5px;

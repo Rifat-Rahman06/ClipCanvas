@@ -4,6 +4,8 @@
   --font-ui: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-serif: 'Source Serif 4 Variable', 'Iowan Old Style', Georgia, Cambria, serif;
   --font-mono: ui-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  /* Typeface for note text; replaced at runtime by the Settings choice. */
+  --font-note: var(--font-serif);
 
   --bg-app: #f8f7f2;
   --bg-sidebar: #f2f0e9;
@@ -114,33 +116,33 @@
   --speed: 150ms;
 }
 
-/* A warm charcoal palette rather than pure black: paper-like surfaces with
-   enough contrast for long reading sessions, and a brighter green accent so
-   interactive elements stay recognizable on dark backgrounds. */
+/* A neutral charcoal palette rather than pure black: #303030 surfaces with
+   soft off-white text for long reading sessions, and a brighter green accent
+   so interactive elements stay recognizable on dark backgrounds. */
 [data-theme='dark'] {
   color-scheme: dark;
 
-  --bg-app: #171b18;
-  --bg-sidebar: #1b201c;
-  --bg-sidebar-deep: #151a16;
-  --surface: #1d231e;
-  --surface-raised: #242b25;
-  --surface-muted: #202623;
-  --surface-sunken: #1a201c;
-  --paper: #222823;
+  --bg-app: #303030;
+  --bg-sidebar: #2a2a2a;
+  --bg-sidebar-deep: #252525;
+  --surface: #363636;
+  --surface-raised: #3d3d3d;
+  --surface-muted: #333333;
+  --surface-sunken: #2b2b2b;
+  --paper: #383838;
 
-  --ink-900: #e9e7de;
-  --ink-800: #d6d4ca;
-  --ink-700: #bcbab0;
-  --ink-600: #a2a79e;
-  --ink-500: #8b928a;
-  --ink-400: #737a72;
-  --ink-300: #5b625b;
+  --ink-900: #ededed;
+  --ink-800: #e3e3e3;
+  --ink-700: #c8c8c8;
+  --ink-600: #b2b2b2;
+  --ink-500: #9b9b9b;
+  --ink-400: #828282;
+  --ink-300: #676767;
 
-  --line: #2f3830;
-  --line-strong: #3b453c;
-  --line-faint: #272e28;
-  --line-edge: #46514a;
+  --line: #424242;
+  --line-strong: #4e4e4e;
+  --line-faint: #3a3a3a;
+  --line-edge: #5a5a5a;
 
   --accent: #58ab8d;
   --accent-hover: #6dbd9f;
@@ -151,7 +153,7 @@
   --accent-ring: rgba(88, 171, 141, 0.35);
   --accent-wash: rgba(88, 171, 141, 0.09);
   --accent-wash-strong: rgba(88, 171, 141, 0.16);
-  --accent-wash-bg: #1f2f29;
+  --accent-wash-bg: #2c3b34;
 
   --on-accent: #10211b;
   --on-danger: #2a1210;
@@ -181,20 +183,20 @@
   --overlay: rgba(0, 0, 0, 0.58);
   --overlay-soft: rgba(0, 0, 0, 0.5);
 
-  --scrollbar-thumb: #3a433b;
-  --scrollbar-thumb-hover: #4b554c;
+  --scrollbar-thumb: #4a4a4a;
+  --scrollbar-thumb-hover: #5a5a5a;
 
-  --placeholder: #6f766e;
-  --placeholder-strong: #7a8178;
-  --link-underline: #3f5f52;
+  --placeholder: #7c7c7c;
+  --placeholder-strong: #878787;
+  --link-underline: #4f7e6b;
 
-  --topbar-to: #202620;
-  --dialog-footer-to: #1c221d;
-  --field-hover-bg: #232a24;
-  --sidebar-footer-bg: rgba(27, 32, 28, 0.82);
+  --topbar-to: #363636;
+  --dialog-footer-to: #2c2c2c;
+  --field-hover-bg: #3b3b3b;
+  --sidebar-footer-bg: rgba(42, 42, 42, 0.82);
 
-  --tooltip-bg: #0f1311;
-  --tooltip-ink: #e9e7de;
+  --tooltip-bg: #1c1c1c;
+  --tooltip-ink: #ededed;
 
   --mark-bg: #5a4a17;
   --mark-ink: #f3e8b8;

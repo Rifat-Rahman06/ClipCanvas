@@ -246,6 +246,12 @@
   box-shadow: 0 0 0 1.5px var(--accent-ring);
 }
 
+/* On the charcoal palette the shared accent ring reads as a green glow.
+   Keep the active note outline neutral grey in dark mode. */
+[data-theme='dark'] .note-card.is-active {
+  box-shadow: 0 0 0 1.5px rgba(227, 227, 227, 0.1);
+}
+
 /* A faint boundary so resting notes stay distinguishable when they sit close
    together. Invisible while the note is active or being edited. */
 .note-card:not(.is-active):not(.is-editing) {
@@ -395,7 +401,7 @@
 .note-card .rich-text-content {
   min-height: 0;
   color: var(--ink-800);
-  font-family: var(--font-serif);
+  font-family: var(--font-note, var(--font-serif));
   font-size: var(--note-font-size, 16px);
   line-height: 1.72;
 }
@@ -477,7 +483,7 @@
 .note-preview-empty {
   margin: 0;
   color: var(--ink-300);
-  font-family: var(--font-serif);
+  font-family: var(--font-note, var(--font-serif));
   font-size: 13px;
   font-style: italic;
 }

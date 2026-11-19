@@ -1,5 +1,9 @@
 import type { AppSettings, EditorMode, ThemeMode } from '../../types';
 import {
+  EDITOR_FONT_FAMILY_DEFAULT,
+  isEditorFontFamily,
+} from '../../lib/fonts';
+import {
   AUTOSAVE_DELAY_SECONDS_DEFAULT,
   AUTOSAVE_DELAY_SECONDS_MAX,
   AUTOSAVE_DELAY_SECONDS_MIN,
@@ -96,6 +100,7 @@ export function defaultSettings(): AppSettings {
     lastImportAt: null,
     editorMode: 'write',
     theme: THEME_DEFAULT,
+    editorFontFamily: EDITOR_FONT_FAMILY_DEFAULT,
     editorFontSize: EDITOR_FONT_SIZE_DEFAULT,
     autosaveDelaySeconds: AUTOSAVE_DELAY_SECONDS_DEFAULT,
     singleClickZoom: SINGLE_CLICK_ZOOM_DEFAULT,
@@ -129,6 +134,9 @@ export function normalizeSettings(
         : null,
     editorMode,
     theme: normalizeTheme(value.theme),
+    editorFontFamily: isEditorFontFamily(value.editorFontFamily)
+      ? value.editorFontFamily
+      : defaults.editorFontFamily,
     editorFontSize: normalizeEditorFontSize(value.editorFontSize),
     autosaveDelaySeconds: normalizeAutosaveDelaySeconds(value.autosaveDelaySeconds),
     singleClickZoom: normalizeSingleClickZoom(value.singleClickZoom),

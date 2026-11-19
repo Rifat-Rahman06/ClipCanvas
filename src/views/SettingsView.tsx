@@ -40,6 +40,13 @@ import {
 } from '../types';
 import { classNames, formatBytes, formatDateTime, nowIso } from '../lib/utils';
 import {
+  EDITOR_FONT_FAMILIES,
+  EDITOR_FONT_FAMILY_DEFAULT,
+  editorFontStack,
+  isEditorFontFamily,
+  type EditorFontFamily,
+} from '../lib/fonts';
+import {
   BackupValidationError,
   analyzeImport,
   createBackupWithAttachments,
@@ -124,10 +131,18 @@ export function SettingsView({ onClose, onImported }: SettingsViewProps) {
   const savedDefaultNoteWidth = data?.settings.defaultNoteWidth;
   const [highlightColor, setHighlightColor] = useState(NOTE_HIGHLIGHT_COLOR_DEFAULT);
   const savedHighlightColor = data?.settings.highlightColor;
+  const [editorFontFamily, setEditorFontFamily] = useState<EditorFontFamily>(
+    EDITOR_FONT_FAMILY_DEFAULT,
+  );
+  const savedEditorFontFamily = data?.settings.editorFontFamily;
 
   useEffect(() => {
     if (savedHighlightColor) setHighlightColor(savedHighlightColor);
   }, [savedHighlightColor]);
+
+  useEffect(() => {
+    if (savedEditorFontFamily) setEditorFontFamily(savedEditorFontFamily);
+  }, [savedEditorFontFamily]);
 
   useEffect(() => {
     if (savedFontSize === undefined || fontDirtyRef.current) return;
@@ -378,6 +393,20 @@ export function SettingsView({ onClose, onImported }: SettingsViewProps) {
     setFontSize(value);
   };
 
+  const handleFontFamilyChange = (value: EditorFontFamily) => {
+    if (value === editorFontFamily) return;
+    const previous = editorFontFamily;
+    setEditorFontFamily(value);
+    void updateSettings({ editorFontFamily: value }).catch((error) => {
+      setEditorFontFamily(previous);
+      notify({
+        kind: 'error',
+        message:
+          error instanceof Error ? error.message : 'The font family could not be saved.',
+      });
+    });
+  };
+
   const handleAutosaveDelayChange = (value: number) => {
     if (!Number.isFinite(value)) return;
     autosaveDraftRef.current = value;
@@ -577,6 +606,33 @@ export function SettingsView({ onClose, onImported }: SettingsViewProps) {
               <output className="font-size-value" htmlFor="editor-font-size">
                 {fontSize}px
               </output>
+            </div>
+          </div>
+          <div className="settings-field-row settings-zoom-row">
+            <div>
+              <span className="settings-field-title">Font family</span>
+              <span className="settings-field-description">
+                Typeface used for note text and previews.
+              </span>
+            </div>
+            <div className="settings-font-control">
+              <select
+                id="editor-font-family"
+                className="select"
+                value={editorFontFamily}
+                aria-label="Editor font family"
+                style={{ fontFamily: editorFontStack(editorFontFamily) }}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (isEditorFontFamily(value)) handleFontFamilyChange(value);
+                }}
+              >
+                {EDITOR_FONT_FAMILIES.map((font) => (
+                  <option key={font.id} value={font.id} style={{ fontFamily: font.stack }}>
+                    {font.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <div className="settings-field-row settings-zoom-row">

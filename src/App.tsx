@@ -10,6 +10,7 @@ import { classNames, noteDisplayTitle, titleFromSelection } from './lib/utils';
 import { compressImage } from './lib/images';
 import { clipboardToNote, textFromHtmlWithBreaks } from './lib/richText';
 import { applyTheme } from './lib/theme';
+import { applyEditorFontFamily } from './lib/fonts';
 import { createAttachment } from './services/db/attachments';
 import {
   CanvasTransferError,
@@ -125,11 +126,17 @@ export default function App() {
   const sidebarVisible = !data ? false : isMobile ? mobileSidebarOpen : !data.settings.sidebarCollapsed;
   const showSidebarButton = isMobile || Boolean(data?.settings.sidebarCollapsed);
   const theme = data?.settings.theme;
+  const editorFontFamily = data?.settings.editorFontFamily;
 
   useEffect(() => {
     if (!theme) return;
     applyTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!editorFontFamily) return;
+    applyEditorFontFamily(editorFontFamily);
+  }, [editorFontFamily]);
 
   useEffect(() => {
     const activeCanvasId = activeCanvas?.id ?? null;

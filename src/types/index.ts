@@ -1,3 +1,5 @@
+import type { EditorFontFamily } from '../lib/fonts';
+
 export const APP_NAME = 'ClipCanvas';
 export const APP_VERSION = '1.0.0';
 export const SCHEMA_VERSION = 3;
@@ -158,6 +160,8 @@ export interface AppSettings {
   editorMode: EditorMode;
   /** Applies to the editor, capture popup, and export preview alike. */
   theme: ThemeMode;
+  /** Typeface used for note text and previews. */
+  editorFontFamily: EditorFontFamily;
   editorFontSize: number;
   /** Seconds of inactivity before an edited note is saved. */
   autosaveDelaySeconds: number;
