@@ -369,3 +369,18 @@
     justify-content: flex-end;
   }
 }
+
+/* Formatting menu for a text selection. TipTap portals this element to
+   <body> with a fixed position, so the React Flow canvas transform cannot
+   scale or clip it. */
+.note-bubble-menu {
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-md);
+}

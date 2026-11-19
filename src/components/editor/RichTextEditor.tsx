@@ -8,6 +8,8 @@ import {
   useEditor,
   type Editor,
 } from '@tiptap/react';
+import { BubbleMenu } from '@tiptap/react/menus';
+import { Bold, Clipboard, Highlighter, List } from 'lucide-react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
@@ -30,6 +32,7 @@ import {
 } from '../../lib/richText';
 import { useToast } from '../../state/ToastContext';
 import { AttachmentImage } from './AttachmentImage';
+import { IconButton } from '../Button';
 
 /**
  * Stores highlights as a plain `<mark>` element. The visible color comes from
@@ -115,6 +118,12 @@ export function RichTextEditor({
   const structuredPasteRef = useRef<
     (view: EditorView, data: DataTransfer | null) => boolean
   >(() => false);
+  const pointerReleaseRef = useRef<{
+    x: number;
+    y: number;
+    from: number;
+    to: number;
+  } | null>(null);
 
   // Tiptap compares these options on every render. Re-creating extension
   // instances or editor props forces it to replace the view props and call
@@ -247,7 +256,10 @@ export function RichTextEditor({
 
   useEffect(() => {
     if (!editor) return;
-    const handleBlur = () => onBlurRef.current?.();
+    const handleBlur = () => {
+      pointerReleaseRef.current = null;
+      onBlurRef.current?.();
+    };
     const handleFocus = () => onFocusRef.current?.();
     editor.on('blur', handleBlur);
     editor.on('focus', handleFocus);
@@ -277,6 +289,143 @@ export function RichTextEditor({
     // moving into the document.
     editor.setEditable(editable, false);
   }, [editor, editable]);
+
+  // Remember where a mouse selection was released. ProseMirror clamps the
+  // caret to the nearest text position, so releasing in the note's blank area
+  // would otherwise anchor the menu at the end of the line instead of at the
+  // pointer.
+  useEffect(() => {
+    if (!editor) return;
+    let selecting = false;
+
+    const handleMouseDown = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      const target = event.target;
+      selecting = target instanceof Node && editor.view.dom.contains(target);
+    };
+
+    const handleMouseUp = (event: MouseEvent) => {
+      if (!selecting) return;
+      selecting = false;
+      pointerReleaseRef.current = null;
+      if (!editor.isFocused) return;
+      // Releasing over toolbar chrome should keep the caret anchor rather
+      // than parking the menu on top of those buttons.
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest('.note-anchored-toolbar, .note-bubble-menu')
+      ) {
+        return;
+      }
+      // Let ProseMirror finish updating the selection for this gesture first.
+      window.setTimeout(() => {
+        if (editor.isDestroyed) return;
+        const { selection } = editor.state;
+        if (selection.empty) return;
+        pointerReleaseRef.current = {
+          x: event.clientX,
+          y: event.clientY,
+          from: selection.from,
+          to: selection.to,
+        };
+        // Releasing in blank space usually leaves the selection unchanged, so
+        // no transaction would move the already-visible menu. Nudge the plugin
+        // (its default plugin key) to recompute the placement.
+        editor.view.dispatch(
+          editor.state.tr.setMeta('bubbleMenu', 'updatePosition'),
+        );
+      }, 0);
+    };
+
+    window.addEventListener('mousedown', handleMouseDown, true);
+    window.addEventListener('mouseup', handleMouseUp, true);
+    return () => {
+      window.removeEventListener('mousedown', handleMouseDown, true);
+      window.removeEventListener('mouseup', handleMouseUp, true);
+    };
+  }, [editor]);
+
+  // The selection menu is portaled to <body> with a fixed strategy so the
+  // React Flow zoom transform can neither scale nor clip it. Both props keep a
+  // stable identity: TipTap re-registers the plugin when they change.
+  const bubbleMenuAppendTo = useCallback(() => document.body, []);
+  const bubbleMenuOptions = useMemo(
+    () => ({
+      placement: 'top' as const,
+      offset: 8,
+      strategy: 'fixed' as const,
+      flip: true,
+      shift: true,
+    }),
+    [],
+  );
+
+  // Prefer the exact pointer release point for a mouse selection; fall back to
+  // the moving end of the selection (the caret) for keyboard selections. A
+  // zero-width rect keeps Floating UI placing the menu directly above that
+  // point.
+  const getBubbleMenuAnchor = useCallback(() => {
+    if (!editor) return null;
+    const { selection } = editor.state;
+    if (selection.empty) return null;
+
+    const release = pointerReleaseRef.current;
+    if (release && release.from === selection.from && release.to === selection.to) {
+      const rect = new DOMRect(release.x, release.y, 0, 1);
+      return {
+        getBoundingClientRect: () => rect,
+        getClientRects: () => [rect],
+      };
+    }
+
+    try {
+      const coords = editor.view.coordsAtPos(selection.head);
+      const height = Math.max(1, coords.bottom - coords.top);
+      const rect = new DOMRect(coords.left, coords.top, 0, height);
+      return {
+        getBoundingClientRect: () => rect,
+        getClientRects: () => [rect],
+      };
+    } catch {
+      // A position inside an unrendered block has no coordinates; fall back to
+      // TipTap's default selection anchoring.
+      return null;
+    }
+  }, [editor]);
+
+  const runSelectionFormat = useCallback(
+    (action: 'bold' | 'highlight' | 'bulletList') => {
+      if (!editor) return;
+      const chain = editor.chain().focus(undefined, { scrollIntoView: false });
+      if (action === 'bold') chain.toggleBold().run();
+      else if (action === 'highlight') chain.toggleMark('highlight').run();
+      else chain.toggleBulletList().run();
+    },
+    [editor],
+  );
+
+  // Copies just the selected range as Markdown, mirroring Ctrl+C inside the
+  // editor and the whole-note copy in the note toolbar.
+  const copySelectionAsMarkdown = useCallback(() => {
+    if (!editor) return;
+    const { selection } = editor.state;
+    if (selection.empty) return;
+    try {
+      const { dom } = editor.view.serializeForClipboard(selection.content());
+      const markdown = htmlToMarkdownForCopy((dom as HTMLElement).innerHTML);
+      if (!markdown.trim()) {
+        notify({ kind: 'info', message: 'The selection has no text to copy.' });
+        return;
+      }
+      void navigator.clipboard
+        .writeText(markdown)
+        .then(() => notify({ kind: 'success', message: 'Selection copied as Markdown.' }))
+        .catch(() => notify({ kind: 'error', message: 'Could not copy the selection.' }));
+    } catch {
+      notify({ kind: 'error', message: 'Could not copy the selection.' });
+    }
+  }, [editor, notify]);
 
   async function insertImages(
     view: EditorView,
@@ -325,14 +474,54 @@ export function RichTextEditor({
   if (!editor) return <div className="rich-text-loading" />;
 
   return (
-    <EditorContent
-      editor={editor}
-      className="rich-text-editor"
-      onMouseDown={() => {
-        if (!editor.isFocused) {
-          editor.commands.focus(undefined, { scrollIntoView: false });
-        }
-      }}
-    />
+    <>
+      <EditorContent
+        editor={editor}
+        className="rich-text-editor"
+        onMouseDown={() => {
+          if (!editor.isFocused) {
+            editor.commands.focus(undefined, { scrollIntoView: false });
+          }
+        }}
+      />
+      <BubbleMenu
+        editor={editor}
+        appendTo={bubbleMenuAppendTo}
+        getReferencedVirtualElement={getBubbleMenuAnchor}
+        options={bubbleMenuOptions}
+        className="note-bubble-menu"
+        role="toolbar"
+        aria-label="Text formatting"
+        onMouseDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+      >
+        <IconButton label="Bold" size="sm" onClick={() => runSelectionFormat('bold')}>
+          <Bold size={15} />
+        </IconButton>
+        <IconButton
+          label="Highlight"
+          size="sm"
+          onClick={() => runSelectionFormat('highlight')}
+        >
+          <Highlighter size={15} />
+        </IconButton>
+        <IconButton
+          label="Bullet list"
+          size="sm"
+          onClick={() => runSelectionFormat('bulletList')}
+        >
+          <List size={15} />
+        </IconButton>
+        <IconButton
+          label="Copy selection as Markdown"
+          size="sm"
+          onClick={copySelectionAsMarkdown}
+        >
+          <Clipboard size={15} />
+        </IconButton>
+      </BubbleMenu>
+    </>
   );
 }

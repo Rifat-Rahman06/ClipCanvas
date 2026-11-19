@@ -1,10 +1,7 @@
 import {
-  Bold,
   Clipboard,
   ClipboardCopy,
   Download,
-  Highlighter,
-  List,
   Trash2,
 } from 'lucide-react';
 import type { Note, NoteContentSnapshot } from '../types';
@@ -15,14 +12,11 @@ import { useToast } from '../state/ToastContext';
 import { IconButton } from './Button';
 import type { NoteCardAction } from './NoteCard';
 
-export type NoteFormatAction = 'bold' | 'highlight' | 'bulletList';
-
 interface ActiveNoteToolbarProps {
   note: Note;
   getLiveContent: (noteId: string) => NoteContentSnapshot | null;
   onNoteAction: (noteId: string, action: NoteCardAction) => void;
   onInsertSelection: () => void;
-  onFormat: (noteId: string, action: NoteFormatAction) => void;
 }
 
 /** Selected-element actions live beside the note, never inside it. */
@@ -31,7 +25,6 @@ export function ActiveNoteToolbar({
   getLiveContent,
   onNoteAction,
   onInsertSelection,
-  onFormat,
 }: ActiveNoteToolbarProps) {
   const { notify } = useToast();
 
@@ -89,27 +82,6 @@ export function ActiveNoteToolbar({
         onClick={onInsertSelection}
       >
         <ClipboardCopy size={15} />
-      </IconButton>
-      <IconButton
-        label="Bold"
-        size="sm"
-        onClick={() => onFormat(note.id, 'bold')}
-      >
-        <Bold size={15} />
-      </IconButton>
-      <IconButton
-        label="Highlight"
-        size="sm"
-        onClick={() => onFormat(note.id, 'highlight')}
-      >
-        <Highlighter size={15} />
-      </IconButton>
-      <IconButton
-        label="Bullet list"
-        size="sm"
-        onClick={() => onFormat(note.id, 'bulletList')}
-      >
-        <List size={15} />
       </IconButton>
       <IconButton label="Copy note as Markdown" size="sm" onClick={copyElement}>
         <Clipboard size={15} />

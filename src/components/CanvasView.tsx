@@ -57,7 +57,7 @@ import {
 import { defaultNoteLayout } from '../services/db/repository';
 import { Button, IconButton } from './Button';
 import { ActionMenu } from './ActionMenu';
-import { ActiveNoteToolbar, type NoteFormatAction } from './ActiveNoteToolbar';
+import { ActiveNoteToolbar } from './ActiveNoteToolbar';
 import {
   NoteCard,
   type BeginEditOptions,
@@ -89,14 +89,6 @@ const FOCUS_ZOOM_MAX = CANVAS_MAX_ZOOM;
 const TOOLBAR_GAP = 8;
 const TOOLBAR_WIDTH = 36;
 const TOOLBAR_HALF_HEIGHT = 92;
-
-function applyFormatAction(editor: Editor, action: NoteFormatAction): void {
-  const focusOptions = { scrollIntoView: false };
-  const chain = editor.chain().focus(undefined, focusOptions);
-  if (action === 'bold') chain.toggleBold().run();
-  else if (action === 'highlight') chain.toggleMark('highlight').run();
-  else chain.toggleBulletList().run();
-}
 
 const SEARCH_HIGHLIGHT_ALL = 'clipcanvas-canvas-search-all';
 const SEARCH_HIGHLIGHT_CURRENT = 'clipcanvas-canvas-search-current';
@@ -325,7 +317,6 @@ interface NoteNodeData extends Record<string, unknown> {
   onEndResize: (noteId: string) => void;
   onEditorReady: (noteId: string, editor: Editor | null) => void;
   onDiscardEmpty: (noteId: string) => void;
-  onFormat: (noteId: string, action: NoteFormatAction) => void;
   onInsertSelection: () => void;
   onLayoutChange: (noteId: string, layout: NoteLayout) => void;
   /** Latest in-memory content for copy/download while an edit session is open. */
@@ -464,7 +455,6 @@ function CanvasSurface({
   const handledEditRequestRef = useRef(0);
   const editorsRef = useRef(new Map<string, Editor>());
   const liveContentRef = useRef(new Map<string, () => NoteContentSnapshot>());
-  const pendingFormatRef = useRef<{ noteId: string; action: NoteFormatAction } | null>(null);
   const pendingLayoutsRef = useRef(new Map<string, NoteLayout>());
   const [searchQuery, setSearchQuery] = useState('');
   const [searchMatches, setSearchMatches] = useState<CanvasSearchMatch[]>([]);
@@ -740,44 +730,12 @@ function CanvasSurface({
     setResizingNoteId((current) => (current === noteId ? null : current));
   }, []);
 
-  const runFormat = useCallback(
-    (noteId: string, action: NoteFormatAction) => {
-      const apply = (editor: Editor) => applyFormatAction(editor, action);
-      const editor = editorsRef.current.get(noteId);
-      if (editor && editingNoteId === noteId) {
-        apply(editor);
-        return;
-      }
-      // Formatting a note that is not open in the editor should open it first.
-      // If the editor already exists but is hidden, apply once editing has
-      // switched on.
-      pendingFormatRef.current = { noteId, action };
-      handleBeginEdit(noteId);
-      if (editor) {
-        window.setTimeout(() => {
-          const pending = pendingFormatRef.current;
-          if (!pending || pending.noteId !== noteId) return;
-          pendingFormatRef.current = null;
-          apply(editor);
-        }, 80);
-      }
-    },
-    [editingNoteId, handleBeginEdit],
-  );
-
   const handleEditorReady = useCallback((noteId: string, editor: Editor | null) => {
     if (!editor) {
       editorsRef.current.delete(noteId);
       return;
     }
     editorsRef.current.set(noteId, editor);
-    const pending = pendingFormatRef.current;
-    if (pending && pending.noteId === noteId) {
-      pendingFormatRef.current = null;
-      window.setTimeout(() => {
-        applyFormatAction(editor, pending.action);
-      }, 0);
-    }
   }, []);
 
   const registerLiveContent = useCallback(
@@ -819,7 +777,6 @@ function CanvasSurface({
     onEndResize: handleEndResize,
     onEditorReady: handleEditorReady,
     onDiscardEmptyNote,
-    onFormat: runFormat,
     onNoteLayoutChange: handleNoteLayoutChange,
     getLiveContent,
     onRegisterLiveContent: registerLiveContent,
@@ -836,7 +793,6 @@ function CanvasSurface({
     onEndResize: handleEndResize,
     onEditorReady: handleEditorReady,
     onDiscardEmptyNote,
-    onFormat: runFormat,
     onNoteLayoutChange: handleNoteLayoutChange,
     getLiveContent,
     onRegisterLiveContent: registerLiveContent,
@@ -890,7 +846,6 @@ function CanvasSurface({
           onEndResize: callbacks.onEndResize,
           onEditorReady: callbacks.onEditorReady,
           onDiscardEmpty: callbacks.onDiscardEmptyNote,
-          onFormat: callbacks.onFormat,
           onInsertSelection: callbacks.onInsertSelection,
           onLayoutChange: callbacks.onNoteLayoutChange,
           getLiveContent: callbacks.getLiveContent,
@@ -1800,7 +1755,6 @@ function NoteNode({ id, data, width, dragging }: NodeProps<NoteCanvasNode>) {
             getLiveContent={data.getLiveContent}
             onNoteAction={data.onNoteAction}
             onInsertSelection={data.onInsertSelection}
-            onFormat={data.onFormat}
           />
         </NodeToolbar>
       ) : null}
