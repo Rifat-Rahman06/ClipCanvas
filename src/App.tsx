@@ -768,6 +768,9 @@ export default function App() {
           onCloseTab={workspace.closeTab}
           onCreateCanvas={handleNewCanvas}
           onImportCanvas={() => requestCanvasImport('new')}
+          onImportIntoActiveCanvas={() => requestCanvasImport('merge')}
+          onExportCanvas={() => void handleExportCanvas()}
+          onRenameCanvas={handleRenameCanvas}
           onSearch={openCanvasSearch}
         />
 
@@ -793,9 +796,6 @@ export default function App() {
               onNoteAction={(noteId, action) => setNoteAction({ noteId, action })}
               onActivate={activateCanvasNote}
               onAddNote={() => void handleCreateNote(activeCanvas.id)}
-              onExportCanvas={() => void handleExportCanvas()}
-              onImportCanvas={() => requestCanvasImport('merge')}
-              onRenameCanvas={handleRenameCanvas}
               onCanvasImage={(file, position) => void handleCanvasImage(file, position)}
               onCanvasText={(text, position, html) => void handleCanvasText(text, position, html)}
               onCanvasEmptyNote={(position, options) =>

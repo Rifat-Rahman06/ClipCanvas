@@ -1,5 +1,17 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react';
-import { Layers, Maximize2, Menu, Moon, Plus, Search, Sun, Upload, X } from 'lucide-react';
+import {
+  Download,
+  Layers,
+  Maximize2,
+  Menu,
+  Moon,
+  Pencil,
+  Plus,
+  Search,
+  Sun,
+  Upload,
+  X,
+} from 'lucide-react';
 import type { Canvas, ThemeMode } from '../types';
 import { classNames } from '../lib/utils';
 import { openClipCanvasInTab } from '../services/extension/openInTab';
@@ -19,6 +31,9 @@ interface CanvasTabsProps {
   onCloseTab: (canvasId: string) => void;
   onCreateCanvas: () => void;
   onImportCanvas: () => void;
+  onImportIntoActiveCanvas: () => void;
+  onExportCanvas: () => void;
+  onRenameCanvas: () => void;
   onSearch: () => void;
 }
 
@@ -35,6 +50,9 @@ export function CanvasTabs({
   onCloseTab,
   onCreateCanvas,
   onImportCanvas,
+  onImportIntoActiveCanvas,
+  onExportCanvas,
+  onRenameCanvas,
   onSearch,
 }: CanvasTabsProps) {
   const stripRef = useRef<HTMLDivElement>(null);
@@ -144,6 +162,29 @@ export function CanvasTabs({
         <IconButton label="Search current canvas" onClick={onSearch} size="sm">
           <Search size={17} />
         </IconButton>
+        {activeCanvasId ? (
+          <ActionMenu
+            label="Canvas options"
+            size="sm"
+            items={[
+              {
+                label: 'Export This Canvas',
+                icon: Download,
+                onSelect: onExportCanvas,
+              },
+              {
+                label: 'Import Canvas',
+                icon: Upload,
+                onSelect: onImportIntoActiveCanvas,
+              },
+              {
+                label: 'Rename This Canvas',
+                icon: Pencil,
+                onSelect: onRenameCanvas,
+              },
+            ]}
+          />
+        ) : null}
         <IconButton
           label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           onClick={onToggleTheme}
