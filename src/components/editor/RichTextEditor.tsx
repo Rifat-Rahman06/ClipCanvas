@@ -77,6 +77,24 @@ const MarkdownLinkInputRule = Extension.create({
   },
 });
 
+/**
+ * Writes the selection's readable plain text to the clipboard, keeping
+ * paragraph breaks without exposing Markdown syntax. Ctrl+C and Ctrl+X share
+ * it so both copy exactly the same text.
+ */
+function writePlainTextCopy(view: EditorView, event: Event): boolean {
+  if (view.state.selection.empty) return false;
+  const data = (event as ClipboardEvent).clipboardData;
+  if (!data) return false;
+  const { dom } = view.serializeForClipboard(view.state.selection.content());
+  const plainText = textFromHtmlForCopy((dom as HTMLElement).innerHTML);
+  if (!plainText.trim()) return false;
+  event.preventDefault();
+  data.clearData();
+  data.setData('text/plain', plainText);
+  return true;
+}
+
 interface RichTextEditorProps {
   noteId: string;
   projectId: string;
@@ -165,19 +183,17 @@ export function RichTextEditor({
       // panning the canvas viewport instead of moving the edited node.
       handleScrollToSelection: () => true,
       // A collapsed caret keeps native behaviour (nothing to copy). With a
-      // selection, write only readable plain text to text/plain, keeping
-      // paragraph breaks without exposing any Markdown syntax.
+      // selection, Ctrl+C and Ctrl+X write only readable plain text to
+      // text/plain, keeping paragraph breaks without exposing any Markdown
+      // syntax.
       handleDOMEvents: {
-        copy: (view, event) => {
-          if (view.state.selection.empty) return false;
-          const data = (event as ClipboardEvent).clipboardData;
-          if (!data) return false;
-          const { dom } = view.serializeForClipboard(view.state.selection.content());
-          const plainText = textFromHtmlForCopy((dom as HTMLElement).innerHTML);
-          if (!plainText.trim()) return false;
-          event.preventDefault();
-          data.clearData();
-          data.setData('text/plain', plainText);
+        copy: (view, event) => writePlainTextCopy(view, event),
+        cut: (view, event) => {
+          if (!writePlainTextCopy(view, event)) return false;
+          // Same removal as ProseMirror's default cut handler.
+          view.dispatch(
+            view.state.tr.deleteSelection().scrollIntoView().setMeta('uiEvent', 'cut'),
+          );
           return true;
         },
       },
