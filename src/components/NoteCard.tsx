@@ -666,7 +666,7 @@ export function NoteCard({
           )}
           title={
             badge === 'new'
-              ? 'New note saved from the browser'
+              ? 'New note'
               : 'This note has changed since you last opened it'
           }
         >

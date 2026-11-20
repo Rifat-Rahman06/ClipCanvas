@@ -1,6 +1,7 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react';
 import {
   Download,
+  FileUp,
   Layers,
   Maximize2,
   Menu,
@@ -32,6 +33,7 @@ interface CanvasTabsProps {
   onCreateCanvas: () => void;
   onImportCanvas: () => void;
   onImportIntoActiveCanvas: () => void;
+  onImportNote: () => void;
   onExportCanvas: () => void;
   onRenameCanvas: () => void;
   onSearch: () => void;
@@ -51,6 +53,7 @@ export function CanvasTabs({
   onCreateCanvas,
   onImportCanvas,
   onImportIntoActiveCanvas,
+  onImportNote,
   onExportCanvas,
   onRenameCanvas,
   onSearch,
@@ -181,6 +184,12 @@ export function CanvasTabs({
                 label: 'Rename This Canvas',
                 icon: Pencil,
                 onSelect: onRenameCanvas,
+              },
+              {
+                label: 'Import Note',
+                icon: FileUp,
+                separatorBefore: true,
+                onSelect: onImportNote,
               },
             ]}
           />

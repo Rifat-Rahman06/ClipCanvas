@@ -8,7 +8,12 @@ import {
 } from './types';
 import { classNames, noteDisplayTitle, titleFromSelection } from './lib/utils';
 import { compressImage } from './lib/images';
-import { clipboardToNote, textFromHtmlWithBreaks } from './lib/richText';
+import {
+  clipboardToNote,
+  plainTextToHtml,
+  serializeNoteSource,
+  textFromHtmlWithBreaks,
+} from './lib/richText';
 import { applyTheme } from './lib/theme';
 import { applyEditorFontFamily } from './lib/fonts';
 import { createAttachment } from './services/db/attachments';
@@ -67,6 +72,8 @@ export default function App() {
   const [savingNoteIds, setSavingNoteIds] = useState<Set<string>>(() => new Set());
   const searchCanvasIdRef = useRef<string | null>(null);
   const canvasFileInputRef = useRef<HTMLInputElement>(null);
+  const noteImportInputRef = useRef<HTMLInputElement>(null);
+  const importingNoteRef = useRef(false);
   const canvasImportTargetRef = useRef<
     { mode: 'merge'; canvasId: string } | { mode: 'new'; projectId: string | null } | null
   >(null);
@@ -527,6 +534,63 @@ export default function App() {
     [activeCanvas, notify],
   );
 
+  const requestNoteImport = useCallback(() => {
+    if (!activeCanvas) {
+      notify({ kind: 'info', message: 'Open a canvas before importing a note.' });
+      return;
+    }
+    const input = noteImportInputRef.current;
+    if (!input) return;
+    input.value = '';
+    input.click();
+  }, [activeCanvas, notify]);
+
+  const handleNoteImportFile = useCallback(
+    async (file: File) => {
+      if (!activeCanvas || importingNoteRef.current) return;
+      const extension = /\.([^.]+)$/.exec(file.name)?.[1]?.toLowerCase() ?? '';
+      if (extension !== 'md' && extension !== 'txt') {
+        notify({
+          kind: 'error',
+          message: 'Only .md and .txt files can be imported as a note.',
+        });
+        return;
+      }
+      importingNoteRef.current = true;
+      try {
+        const text = await file.text();
+        if (!text.trim()) {
+          notify({ kind: 'info', message: 'That file has no text to import.' });
+          return;
+        }
+        const title = file.name.replace(/\.(md|txt)$/i, '').trim().slice(0, 300);
+        // A text file is literal prose, so it goes through the same plain-text
+        // converter the paste path uses. Markdown keeps its source and lets the
+        // repository render it. Either way the note gets the default free-space
+        // layout, and the New badge stays until the note is opened.
+        const html = extension === 'txt' ? plainTextToHtml(text) : null;
+        const note = await notebook.createNote({
+          projectId: activeCanvas.projectId,
+          canvasId: activeCanvas.id,
+          title,
+          content: html ? serializeNoteSource(html) : text,
+          ...(html ? { contentHtml: html } : {}),
+          browserCapture: true,
+        });
+        workspace.selectNote(note.id, true, note.canvasId);
+        notify({ kind: 'success', message: `Imported “${title || 'note'}”.` });
+      } catch (error) {
+        notify({
+          kind: 'error',
+          message: error instanceof Error ? error.message : 'That note could not be imported.',
+        });
+      } finally {
+        importingNoteRef.current = false;
+      }
+    },
+    [activeCanvas, notebook, notify, workspace],
+  );
+
   const handleCanvasImportFile = useCallback(
     async (file: File) => {
       const target = canvasImportTargetRef.current;
@@ -769,6 +833,7 @@ export default function App() {
           onCreateCanvas={handleNewCanvas}
           onImportCanvas={() => requestCanvasImport('new')}
           onImportIntoActiveCanvas={() => requestCanvasImport('merge')}
+          onImportNote={requestNoteImport}
           onExportCanvas={() => void handleExportCanvas()}
           onRenameCanvas={handleRenameCanvas}
           onSearch={openCanvasSearch}
@@ -846,6 +911,19 @@ export default function App() {
           } else {
             canvasImportTargetRef.current = null;
           }
+        }}
+      />
+
+      <input
+        ref={noteImportInputRef}
+        type="file"
+        accept=".md,.txt,text/markdown,text/plain"
+        className="sr-only"
+        tabIndex={-1}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = '';
+          if (file) void handleNoteImportFile(file);
         }}
       />
 
