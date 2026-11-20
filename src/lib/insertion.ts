@@ -34,6 +34,29 @@ export function capturedTextToHtml(value: string): string {
 }
 
 /**
+ * Prepared editor content for a captured passage.
+ *
+ * `inlineHtml` is set only when the capture is a single paragraph. Inserting
+ * that form at a caret keeps the surrounding text on the same line, which is
+ * what "insert at the caret" means for a short selection. Block captures keep
+ * their paragraph/list structure and use `html`.
+ */
+export interface CapturedEditorInsertion {
+  html: string;
+  inlineHtml: string | null;
+}
+
+export function capturedTextToEditorInsertion(
+  value: string,
+): CapturedEditorInsertion {
+  const html = capturedTextToHtml(value).trim();
+  // Anchor both ends and reject any inner closing tag so two paragraphs are
+  // never mistaken for one (`<p>one</p><p>two</p>` must stay block content).
+  const paragraph = /^<p>((?:(?!<\/p>)[\s\S])*)<\/p>$/.exec(html);
+  return { html, inlineHtml: paragraph ? paragraph[1] : null };
+}
+
+/**
  * Plans a captured passage insertion without adding a blank line above it.
  * A single newline is added only when the caret would otherwise join the
  * passage to existing text.

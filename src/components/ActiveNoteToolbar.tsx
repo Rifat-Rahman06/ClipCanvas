@@ -19,7 +19,11 @@ interface ActiveNoteToolbarProps {
   onInsertSelection: () => void;
 }
 
-/** Selected-element actions live beside the note, never inside it. */
+/**
+ * Selected-element actions live beside the note, or float at the top-right of
+ * the canvas below the fit button when neither side of a near-full-width note
+ * has room.
+ */
 export function ActiveNoteToolbar({
   note,
   getLiveContent,

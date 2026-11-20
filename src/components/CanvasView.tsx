@@ -28,7 +28,9 @@ import {
   useViewport,
   type Node,
   type NodeProps,
+  type OnMove,
   type OnMoveEnd,
+  type OnMoveStart,
   type OnNodeDrag,
   type OnResize,
   type OnResizeEnd,
@@ -82,13 +84,27 @@ const FOCUS_TARGET_WIDTH_MIN = 280;
 const FOCUS_TARGET_WIDTH_MAX = 980;
 const FOCUS_ZOOM_MIN = 0.3;
 const FOCUS_ZOOM_MAX = CANVAS_MAX_ZOOM;
+// How close (in screen pixels) a focused note may drift from its single-click
+// horizontal center before manual panning snaps it back. The zones beside the
+// centered position act as the invisible sticky guides.
+const HORIZONTAL_SNAP_DISTANCE = 32;
 
-// The selected-element toolbar is a single narrow column of small icon buttons.
-// Keep its measured footprint here so the right side is chosen whenever it
-// actually fits, instead of falling back to the left too eagerly.
+// The selected-element toolbar matches the canvas fit button: 26px raised
+// squares separated by 6px, with 15px icons. Keep its measured footprint here
+// so the right side is chosen whenever it actually fits. When neither side has
+// room (a note zoomed to near canvas width), the toolbar floats inside the
+// note, top-aligned below the fit button.
 const TOOLBAR_GAP = 8;
-const TOOLBAR_WIDTH = 36;
+const TOOLBAR_BUTTON_SIZE = 26;
+const TOOLBAR_BUTTON_GAP = 6;
+const TOOLBAR_WIDTH = TOOLBAR_BUTTON_SIZE;
+const TOOLBAR_HEIGHT = 4 * TOOLBAR_BUTTON_SIZE + 3 * TOOLBAR_BUTTON_GAP;
 const TOOLBAR_HALF_HEIGHT = 92;
+// Metrics of the top-right canvas-fit panel (11px margin, 26px button, 6px
+// gap). The floating inside toolbar starts directly below the fit button.
+const CANVAS_PANEL_MARGIN = 11;
+const INSIDE_TOOLBAR_TOP =
+  CANVAS_PANEL_MARGIN + TOOLBAR_BUTTON_SIZE + TOOLBAR_BUTTON_GAP;
 
 const SEARCH_HIGHLIGHT_ALL = 'clipcanvas-canvas-search-all';
 const SEARCH_HIGHLIGHT_CURRENT = 'clipcanvas-canvas-search-current';
@@ -453,6 +469,10 @@ function CanvasSurface({
   const lastCanvasIdRef = useRef<string | null>(null);
   const editZoomTimerRef = useRef<number | null>(null);
   const handledEditRequestRef = useRef(0);
+  // The zoom and note established by single-click focus. Horizontal sticky
+  // centering is available only at exactly that zoom level.
+  const focusZoomRef = useRef<{ noteId: string; zoom: number } | null>(null);
+  const horizontalSnapGestureRef = useRef(false);
   const editorsRef = useRef(new Map<string, Editor>());
   const liveContentRef = useRef(new Map<string, () => NoteContentSnapshot>());
   const pendingLayoutsRef = useRef(new Map<string, NoteLayout>());
@@ -521,6 +541,9 @@ function CanvasSurface({
         FOCUS_ZOOM_MAX,
         Math.max(FOCUS_ZOOM_MIN, responsiveZoom * zoomMultiplier),
       );
+      // Remember the exact single-click level so panning can restore the same
+      // horizontal centering later without affecting any other zoom.
+      focusZoomRef.current = { noteId, zoom };
       if (anchor) {
         if (canvasRect && viewportWidth > 0) {
           const flowPoint = screenToFlowPosition(anchor);
@@ -802,6 +825,8 @@ function CanvasSurface({
     if (lastCanvasIdRef.current === canvas.id) return;
     lastCanvasIdRef.current = canvas.id;
     pendingLayoutsRef.current.clear();
+    focusZoomRef.current = null;
+    horizontalSnapGestureRef.current = false;
     setEditingNoteId(null);
     setResizingNoteId(null);
     clearEditZoomTimer();
@@ -1086,15 +1111,98 @@ function CanvasSurface({
     viewportInteractedAtRef.current = performance.now();
   }, []);
 
+  /**
+   * Viewport X that centers the note focused by a single click. Sticky
+   * centering is available only at the exact zoom that click established.
+   */
+  const focusCenterX = useCallback(
+    (viewport: Viewport): number | null => {
+      if (canvasWidth <= 0) return null;
+      const focus = focusZoomRef.current;
+      if (!focus || focus.noteId !== activeNoteId) return null;
+      if (Math.abs(viewport.zoom - focus.zoom) > 0.001) return null;
+      const node = getNode(focus.noteId);
+      if (!node) return null;
+      const width = Math.max(
+        1,
+        Number(
+          node.measured?.width ??
+            node.width ??
+            node.style?.width ??
+            settings.defaultNoteWidth,
+        ),
+      );
+      const noteCenterX = node.position.x + width / 2;
+      const centeredX = canvasWidth / 2 - noteCenterX * viewport.zoom;
+      return Number.isFinite(centeredX) ? centeredX : null;
+    },
+    [activeNoteId, canvasWidth, getNode, settings.defaultNoteWidth],
+  );
+
+  const handleMoveStart: OnMoveStart = useCallback(
+    (event) => {
+      // A programmatic viewport change (focus animation, a snap correction, or
+      // restoring a canvas) is not a new user gesture, so it must not re-arm
+      // the sticky zone and trap the pan.
+      if (event) horizontalSnapGestureRef.current = false;
+      markViewportInteraction();
+    },
+    [markViewportInteraction],
+  );
+
+  const handleMove: OnMove = useCallback(
+    (event, viewport) => {
+      // Only real pan/zoom gestures snap. Programmatic viewport updates must
+      // never be pulled toward the center.
+      if (!event) return;
+      const centeredX = focusCenterX(viewport);
+      if (centeredX === null) return;
+      const offset = viewport.x - centeredX;
+      if (Math.abs(offset) > HORIZONTAL_SNAP_DISTANCE) {
+        // Leaving the sticky zone deliberately re-arms it, so a later move back
+        // toward the centered position can stick again in the same gesture.
+        horizontalSnapGestureRef.current = false;
+        return;
+      }
+      if (horizontalSnapGestureRef.current) return;
+      if (Math.abs(offset) <= 0.5) return;
+      // Snap once each time the note enters the zone, then let the movement
+      // continue freely. A deliberate horizontal pan can therefore leave it.
+      horizontalSnapGestureRef.current = true;
+      void setViewport({ x: centeredX, y: viewport.y, zoom: viewport.zoom });
+    },
+    [focusCenterX, setViewport],
+  );
+
   const handleMoveEnd: OnMoveEnd = useCallback(
     (_event, viewport) => {
       markViewportInteraction();
       // Search results move the viewport locally to reveal each match. Saving
       // those transient moves would recreate canvas state on every keystroke.
       if (performance.now() - searchViewportMoveAtRef.current < 1000) return;
+      // Wheel pans report the viewport from before any live correction, so
+      // settle from the store value and snap it when it is still near center.
+      const current = getViewport();
+      const centeredX = focusCenterX(current);
+      if (
+        centeredX !== null &&
+        Math.abs(current.x - centeredX) <= HORIZONTAL_SNAP_DISTANCE
+      ) {
+        const snapped = { ...current, x: centeredX };
+        if (Math.abs(current.x - centeredX) > 0.5) void setViewport(snapped);
+        onViewportChange(canvas.id, snapped);
+        return;
+      }
       onViewportChange(canvas.id, viewport);
     },
-    [canvas.id, markViewportInteraction, onViewportChange],
+    [
+      canvas.id,
+      focusCenterX,
+      getViewport,
+      markViewportInteraction,
+      onViewportChange,
+      setViewport,
+    ],
   );
 
   const handleDragStop: OnNodeDrag<NoteCanvasNode> = useCallback(
@@ -1395,7 +1503,8 @@ function CanvasSurface({
         onNodesChange={onNodesChange}
         onPaneClick={handlePaneClick}
         onNodeDragStop={handleDragStop}
-        onMoveStart={markViewportInteraction}
+        onMoveStart={handleMoveStart}
+        onMove={handleMove}
         onMoveEnd={handleMoveEnd}
         defaultViewport={canvas.viewport ?? { x: 0, y: 0, zoom: 1 }}
         minZoom={CANVAS_MIN_ZOOM}
@@ -1573,30 +1682,46 @@ function NoteNode({ id, data, width, dragging }: NodeProps<NoteCanvasNode>) {
   const screenWidth = nodeWidth * viewport.zoom;
   const screenHeight = nodeHeight * viewport.zoom;
   const elementRight = screenX + screenWidth;
-  const toolbarPosition =
-    canvasWidth - elementRight >= TOOLBAR_WIDTH + TOOLBAR_GAP
-      ? Position.Right
-      : Position.Left;
+  const fitsRight = canvasWidth - elementRight >= TOOLBAR_WIDTH + TOOLBAR_GAP;
+  const fitsLeft = screenX >= TOOLBAR_WIDTH + TOOLBAR_GAP;
+  // Right first, then left, then floating inside the note. A near-full-width
+  // note leaves no room beside it, so anchoring the toolbar inside keeps it
+  // visible and reachable.
+  const toolbarPlacement = fitsRight ? 'right' : fitsLeft ? 'left' : 'inside';
   const toolbarX =
-    toolbarPosition === Position.Right
+    toolbarPlacement === 'right'
       ? elementRight + TOOLBAR_GAP
-      : screenX - TOOLBAR_GAP;
-  // Anchor the toolbar to the part of a tall element that is actually visible
-  // in the canvas. Its center then follows the current window slice rather than
-  // the full element's center, which can sit far below the viewport.
+      : toolbarPlacement === 'left'
+        ? screenX - TOOLBAR_GAP
+        : // Line up with the fit button's column at the top-right of the canvas.
+          canvasWidth - CANVAS_PANEL_MARGIN;
+  // Outside the note the toolbar stays centered on the visible slice. Inside
+  // the note it sticks below the fit button, then moves up once the note's
+  // bottom (or top) boundary would be crossed.
   const visibleTop = Math.max(0, screenY);
   const visibleBottom = Math.min(canvasHeight, screenY + screenHeight);
   const visibleCenterY =
     visibleBottom > visibleTop
       ? (visibleTop + visibleBottom) / 2
       : screenY + screenHeight / 2;
-  const toolbarY = Math.min(
+  const outsideToolbarY = Math.min(
     Math.max(TOOLBAR_HALF_HEIGHT, visibleCenterY),
     Math.max(TOOLBAR_HALF_HEIGHT, canvasHeight - TOOLBAR_HALF_HEIGHT),
   );
+  const insideMinY = screenY + TOOLBAR_GAP;
+  const insideMaxY = Math.max(
+    insideMinY,
+    screenY + screenHeight - TOOLBAR_HEIGHT - TOOLBAR_GAP,
+  );
+  const insideToolbarY = Math.max(
+    insideMinY,
+    Math.min(INSIDE_TOOLBAR_TOP, insideMaxY),
+  );
+  const isInside = toolbarPlacement === 'inside';
+  const toolbarY = isInside ? insideToolbarY : outsideToolbarY;
   const toolbarTransform = `translate(${toolbarX}px, ${toolbarY}px) translate(${
-    toolbarPosition === Position.Right ? 0 : -100
-  }%, -50%)`;
+    toolbarPlacement === 'right' ? 0 : -100
+  }%, ${isInside ? 0 : -50}%)`;
   const nodeVisible =
     screenX + screenWidth > 0 &&
     screenX < canvasWidth &&
@@ -1743,7 +1868,7 @@ function NoteNode({ id, data, width, dragging }: NodeProps<NoteCanvasNode>) {
       {data.active && nodeVisible ? (
         <NodeToolbar
           isVisible
-          position={toolbarPosition}
+          position={toolbarPlacement === 'left' ? Position.Left : Position.Right}
           align="center"
           offset={8}
           className="note-anchored-toolbar nodrag"

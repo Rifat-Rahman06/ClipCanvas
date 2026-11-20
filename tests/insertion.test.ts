@@ -1,5 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { planCapturedInsertion } from '../src/lib/insertion';
+import {
+  capturedTextToEditorInsertion,
+  planCapturedInsertion,
+} from '../src/lib/insertion';
+
+describe('capturedTextToEditorInsertion', () => {
+  it('exposes a single paragraph as inline content for caret insertion', () => {
+    const result = capturedTextToEditorInsertion('Hello **world**');
+    expect(result.inlineHtml).toBe('Hello <strong>world</strong>');
+    expect(result.html).toBe('<p>Hello <strong>world</strong></p>');
+  });
+
+  it('keeps a multi-paragraph capture as block content', () => {
+    const result = capturedTextToEditorInsertion('First paragraph\n\nSecond paragraph');
+    expect(result.inlineHtml).toBeNull();
+    expect(result.html).toContain('<p>First paragraph</p>');
+    expect(result.html).toContain('<p>Second paragraph</p>');
+  });
+
+  it('keeps list captures as block content', () => {
+    const result = capturedTextToEditorInsertion('- One\n- Two');
+    expect(result.inlineHtml).toBeNull();
+    expect(result.html).toContain('<ul>');
+  });
+});
 
 describe('planCapturedInsertion', () => {
   it('inserts a captured block without a leading blank line', () => {

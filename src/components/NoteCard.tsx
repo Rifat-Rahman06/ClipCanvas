@@ -23,7 +23,7 @@ import {
   markdownToHtml,
   serializeNoteSource,
 } from '../lib/richText';
-import { capturedTextToHtml } from '../lib/insertion';
+import { capturedTextToEditorInsertion } from '../lib/insertion';
 import { useToast } from '../state/ToastContext';
 import { RichTextEditor } from './editor/RichTextEditor';
 
@@ -128,6 +128,11 @@ export function NoteCard({
   const localDirtyRef = useRef(false);
   const localRevisionRef = useRef(0);
   const insertAtEndRef = useRef(true);
+  const handledInsertionNonceRef = useRef(0);
+  // A caret can stay meaningful while the side panel loses focus (for example
+  // while selecting text on the page), so remember that this edit session had
+  // a real caret instead of relying on `isFocused` when the insertion arrives.
+  const hasEditorCaretRef = useRef(false);
   const editingRef = useRef(editing);
   editingRef.current = editing;
   const activeRef = useRef(active);
@@ -154,6 +159,8 @@ export function NoteCard({
     localDirtyRef.current = false;
     localRevisionRef.current += 1;
     insertAtEndRef.current = true;
+    handledInsertionNonceRef.current = 0;
+    hasEditorCaretRef.current = false;
     reportSavePending(false);
     clearDiscardTimer();
   }, [clearDiscardTimer, note.id, reportSavePending]);
@@ -235,6 +242,11 @@ export function NoteCard({
     }, 0);
   }, [scheduleDiscard]);
 
+  const handleEditorFocus = useCallback(() => {
+    hasEditorCaretRef.current = true;
+    clearDiscardTimer();
+  }, [clearDiscardTimer]);
+
   useEffect(
     () => () => {
       clearDiscardTimer();
@@ -270,13 +282,20 @@ export function NoteCard({
 
   useEffect(() => {
     if (!active || insertion?.noteId !== note.id) return;
-    insertAtEndRef.current = !editorRef.current?.isFocused;
+    // Decide once per insertion, before this effect starts a fresh edit
+    // session. Re-running for new callbacks must not turn the append decision
+    // into a caret insertion (or vice versa).
+    if (handledInsertionNonceRef.current !== insertion.nonce) {
+      handledInsertionNonceRef.current = insertion.nonce;
+      insertAtEndRef.current = !(editingRef.current && hasEditorCaretRef.current);
+    }
     setEditorMounted(true);
     onBeginEdit(note.id);
   }, [active, insertion, note.id, onBeginEdit]);
 
   useEffect(() => {
     if (editing) setEditorMounted(true);
+    else hasEditorCaretRef.current = false;
   }, [editing]);
 
   useEffect(() => {
@@ -510,16 +529,31 @@ export function NoteCard({
   useEffect(() => {
     if (!insertion || !active || insertion.noteId !== note.id) return;
     if (!editor) return;
-    const html = capturedTextToHtml(insertion.text);
+    const captured = capturedTextToEditorInsertion(insertion.text);
+    const html = captured.html;
     if (!html.trim()) {
       onInsertionApplied(insertion.nonce);
       return;
     }
     const timer = window.setTimeout(() => {
       if (insertAtEndRef.current) {
-        editor.chain().focus('end', { scrollIntoView: false }).insertContent(html).run();
+        // No caret was placed in this session: append at the very end with one
+        // blank line (two newlines) separating the capture from the last block.
+        const separator = editor.isEmpty ? '' : '<p></p>';
+        editor
+          .chain()
+          .focus('end', { scrollIntoView: false })
+          .insertContent(`${separator}${html}`)
+          .run();
       } else {
-        editor.chain().focus(undefined, { scrollIntoView: false }).insertContent(html).run();
+        // A caret is present: insert exactly at it. A single-paragraph capture
+        // goes in as inline content so it continues the current line; a block
+        // capture keeps its own structure without adding a leading blank line.
+        editor
+          .chain()
+          .focus(undefined, { scrollIntoView: false })
+          .insertContent(captured.inlineHtml ?? html)
+          .run();
       }
       onInsertionApplied(insertion.nonce);
     }, 40);
@@ -652,7 +686,7 @@ export function NoteCard({
               onChange={handleContentChange}
               onEditorReady={handleEditorReady}
               onBlur={handleEditorBlur}
-              onFocus={clearDiscardTimer}
+              onFocus={handleEditorFocus}
             />
           </div>
         ) : null}
