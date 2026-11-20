@@ -505,30 +505,158 @@ export function textFromHtmlWithBreaks(html: string): string {
     .trim();
 }
 
+export interface TextFromHtmlOptions {
+  /** Keep task completion as `[x]` / `[ ]`. */
+  taskStatus?: boolean;
+  /** Put each image description on its own paragraph. */
+  imageBlocks?: boolean;
+  /** Keep one tab-separated line per table row. */
+  tableColumns?: boolean;
+  /** Prefix quoted lines with one `>` per nesting level. */
+  quoteDepth?: boolean;
+}
+
+// Sentinels survive tag stripping and whitespace normalization, which would
+// otherwise strip the tabs that hold a table row together.
+const COLUMN_BREAK = '\u0001';
+const QUOTE_OPEN = '\u0006';
+const QUOTE_CLOSE = '\u0007';
+
+interface LineOptions {
+  tableColumns: boolean;
+  taskStatus: boolean;
+}
+
+function finishTextLine(line: string, options: LineOptions): string {
+  let value = line;
+  if (options.tableColumns) {
+    value = value.split(COLUMN_BREAK).join('\t').replace(/\t+$/, '');
+  }
+  if (!options.taskStatus) return value;
+  // The checkbox markup leaves a space behind, so collapse the doubled gap
+  // between a list marker and its status.
+  return value.replace(/^([ \t]*(?:•|\d+\.)[ \t]+)(\[[ x]\])\s+/, '$1$2 ');
+}
+
+function applyQuoteDepth(lines: string[], options: LineOptions): string[] {
+  let depth = 0;
+  const rendered = lines.map((raw) => {
+    let text = '';
+    let lineDepth = depth;
+    for (const char of raw) {
+      if (char === QUOTE_OPEN) {
+        depth += 1;
+        lineDepth = depth;
+      } else if (char === QUOTE_CLOSE) {
+        depth = Math.max(0, depth - 1);
+        lineDepth = depth;
+      } else {
+        text += char;
+      }
+    }
+    return { text: finishTextLine(text, options), depth: lineDepth };
+  });
+
+  const nonBlankAt = (start: number, step: number) => {
+    for (let index = start; index >= 0 && index < rendered.length; index += step) {
+      if (rendered[index].text.trim() !== '') return rendered[index];
+    }
+    return null;
+  };
+
+  const out: string[] = [];
+  for (let index = 0; index < rendered.length; index += 1) {
+    const entry = rendered[index];
+    if (entry.text.trim() === '') {
+      // A nested quotation follows its parent line directly; separate
+      // quotations keep their blank line.
+      const previous = nonBlankAt(index - 1, -1);
+      const next = nonBlankAt(index + 1, 1);
+      if (
+        previous &&
+        next &&
+        previous.depth > 0 &&
+        next.depth > 0 &&
+        previous.depth !== next.depth
+      ) {
+        continue;
+      }
+      out.push('');
+      continue;
+    }
+    out.push(entry.depth > 0 ? `${'>'.repeat(entry.depth)} ${entry.text.trim()}` : entry.text);
+  }
+  return out;
+}
+
 /**
  * Clipboard serializer for Ctrl+C inside the editor. Unlike
  * `textFromHtmlWithBreaks`, blocks keep a blank line between them, table cells
  * are tab-separated, and list items keep their bullet or number with nesting
  * indented, so copied prose reads naturally and never exposes Markdown syntax
  * such as `**`, `##`, or `-`.
+ *
+ * The options are opt-in and are used by the TXT download so it can keep task
+ * state, image descriptions, table columns and quotation depth. With no
+ * options the output is the clipboard text, unchanged.
  */
-export function textFromHtmlForCopy(html: string): string {
+export function textFromHtmlForCopy(
+  html: string,
+  options: TextFromHtmlOptions = {},
+): string {
   if (!html.trim()) return '';
+  const {
+    taskStatus = false,
+    imageBlocks = false,
+    tableColumns = false,
+    quoteDepth = false,
+  } = options;
+
   const withImages = html
     // Keep the image description instead of dropping the whole node.
     .replace(/<img\b[^>]*>/gi, (tag) => {
       const alt = /\balt\s*=\s*"([^"]*)"/i.exec(tag)?.[1] ?? '';
-      return alt.trim() ? ` ${alt.trim()} ` : '';
+      if (!alt.trim()) return '';
+      // A downloaded text file keeps descriptions as their own paragraph so
+      // they never run into the next heading or image. Clipboard text keeps
+      // the inline spacing so Ctrl+C output stays unchanged.
+      return imageBlocks ? `\n\n${alt.trim()}\n\n` : ` ${alt.trim()} `;
     });
+  // Task items carry their state in the checkbox markup, which tag stripping
+  // removes. Read it before that happens.
+  const withTasks = taskStatus
+    ? withImages.replace(/<input\b[^>]*>/gi, (tag) => {
+        if (!/\btype\s*=\s*["']?checkbox/i.test(tag)) return tag;
+        return /(^|\s)checked(?:\s*=|\s|\/?>|$)/i.test(tag) ? '[x] ' : '[ ] ';
+      })
+    : withImages;
   // Table cells become tab-separated values. Their inner block markup is
   // flattened first so a cell never splits its row into extra lines.
-  const withCells = withImages
-    .replace(
-      /<(td|th)\b[^>]*>([\s\S]*?)<\/\1>/gi,
-      (_match, _tag: string, cell: string) =>
-        `${cell.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()}\t`,
-    )
-    .replace(/<\/(td|th)>/gi, '\t');
+  let withCells: string;
+  if (tableColumns) {
+    // Read each row as a unit: pretty-printed HTML puts newlines between cells,
+    // and the whitespace pass would otherwise eat the column separators.
+    withCells = withTasks.replace(/<table\b[^>]*>[\s\S]*?<\/table>/gi, (table) => {
+      const rows = Array.from(table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi))
+        .map((row) =>
+          Array.from((row[1] ?? '').matchAll(/<(td|th)\b[^>]*>([\s\S]*?)<\/\1>/gi))
+            .map((cell) =>
+              (cell[2] ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
+            )
+            .join(COLUMN_BREAK),
+        )
+        .filter(Boolean);
+      return rows.length ? `${rows.join('\n')}\n\n` : '';
+    });
+  } else {
+    withCells = withTasks
+      .replace(
+        /<(td|th)\b[^>]*>([\s\S]*?)<\/\1>/gi,
+        (_match, _tag: string, cell: string) =>
+          `${cell.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()}\t`,
+      )
+      .replace(/<\/(td|th)>/gi, '\t');
+  }
   // Lists keep their own counters: ordered items stay numbered, nested items
   // stay indented, and nothing turns into a Markdown `-` marker.
   const lists: { ordered: boolean; next: number }[] = [];
@@ -551,7 +679,12 @@ export function textFromHtmlForCopy(html: string): string {
       return '';
     },
   );
-  const withBreaks = withLists
+  const withQuotes = quoteDepth
+    ? withLists
+        .replace(/<blockquote\b[^>]*>/gi, QUOTE_OPEN)
+        .replace(/<\/blockquote>/gi, `${QUOTE_CLOSE}\n\n`)
+    : withLists;
+  const withBreaks = withQuotes
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/tr>/gi, '\n')
     .replace(/<\/(p|div|h[1-6]|blockquote|pre|table)>/gi, '\n\n');
@@ -559,11 +692,15 @@ export function textFromHtmlForCopy(html: string): string {
     allowedTags: [],
     allowedAttributes: {},
   });
-  const lines = decodeBasicEntities(plain)
+  const rawLines = decodeBasicEntities(plain)
     .replace(/[ \t]+\n/g, '\n')
     .replace(/^[ \t]+$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .split('\n');
+  const lineOptions: LineOptions = { tableColumns, taskStatus };
+  const lines = quoteDepth
+    ? applyQuoteDepth(rawLines, lineOptions)
+    : rawLines.map((line) => finishTextLine(line, lineOptions));
   // A list item's inner paragraph adds a blank line before the next item.
   // Drop it so a list stays one block, while paragraphs keep their blank line.
   const isListItem = (line: string | undefined) =>

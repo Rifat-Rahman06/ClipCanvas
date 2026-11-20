@@ -3,16 +3,36 @@ import {
   Clipboard,
   ClipboardCopy,
   Download,
+  FileCode,
+  FileText,
   Trash2,
   ZoomIn,
 } from 'lucide-react';
 import type { Note, NoteContentSnapshot } from '../types';
 import { noteDisplayTitle } from '../lib/utils';
-import { htmlToMarkdown } from '../lib/richText';
+import {
+  htmlToMarkdown,
+  markdownToHtml,
+  textFromHtmlForCopy,
+  type TextFromHtmlOptions,
+} from '../lib/richText';
 import { downloadTextFile } from '../services/import-export/download';
 import { useToast } from '../state/ToastContext';
+import { ActionMenu } from './ActionMenu';
 import { IconButton } from './Button';
 import type { NoteCardAction } from './NoteCard';
+
+/**
+ * TXT downloads ask the shared converter to keep the structure a text file can
+ * still express: task state, image descriptions on their own line, table
+ * columns and quotation depth. Clipboard copies use the default options.
+ */
+const TXT_OPTIONS: TextFromHtmlOptions = {
+  taskStatus: true,
+  imageBlocks: true,
+  tableColumns: true,
+  quoteDepth: true,
+};
 
 interface ActiveNoteToolbarProps {
   note: Note;
@@ -46,6 +66,23 @@ export function ActiveNoteToolbar({
     return note.contentHtml ? htmlToMarkdown(note.contentHtml) : '';
   };
 
+  /**
+   * The note as plain text, reusing the clipboard text conversion. The live
+   * editor HTML is the most faithful source while editing; stored notes fall
+   * back to their rendered HTML and then to the Markdown source.
+   */
+  const resolvePlainText = (): string => {
+    const live = getLiveContent(note.id);
+    if (live?.html.trim()) return textFromHtmlForCopy(live.html, TXT_OPTIONS);
+    if (!live && note.contentHtml?.trim()) {
+      return textFromHtmlForCopy(note.contentHtml, TXT_OPTIONS);
+    }
+    const source = resolveSource();
+    return source.trim()
+      ? textFromHtmlForCopy(markdownToHtml(source), TXT_OPTIONS)
+      : (note.contentText ?? '');
+  };
+
   const copyElement = () => {
     const text = resolveSource();
     if (!text.trim()) {
@@ -59,13 +96,13 @@ export function ActiveNoteToolbar({
       .catch(() => notify({ kind: 'error', message: 'Could not copy this element.' }));
   };
 
-  const downloadElement = () => {
-    const body = resolveSource().trim();
+  const downloadElement = (format: 'markdown' | 'text') => {
+    const body = (format === 'text' ? resolvePlainText() : resolveSource()).trim();
     const title = note.title.trim();
     const label = title || noteDisplayTitle(note);
     const firstLine = body.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? '';
     const text = title && body && firstLine !== title ? `${title}\n\n${body}` : body || label;
-    const filename = `${label}.md`;
+    const filename = `${label}.${format === 'text' ? 'txt' : 'md'}`;
 
     void downloadTextFile(filename, `${text}\n`)
       .then(() => notify({ kind: 'success', message: `Downloaded “${filename}”.` }))
@@ -94,9 +131,23 @@ export function ActiveNoteToolbar({
       <IconButton label="Copy note as Markdown" size="sm" onClick={copyElement}>
         <Clipboard size={15} />
       </IconButton>
-      <IconButton label="Download as Markdown" size="sm" onClick={downloadElement}>
-        <Download size={15} />
-      </IconButton>
+      <ActionMenu
+        label="Download note"
+        size="sm"
+        trigger={<Download size={15} />}
+        items={[
+          {
+            label: 'Markdown (.md)',
+            icon: FileCode,
+            onSelect: () => downloadElement('markdown'),
+          },
+          {
+            label: 'Plain text (.txt)',
+            icon: FileText,
+            onSelect: () => downloadElement('text'),
+          },
+        ]}
+      />
       <IconButton
         label="Delete note"
         variant="danger"
