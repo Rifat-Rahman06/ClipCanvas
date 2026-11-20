@@ -38,7 +38,16 @@ import {
   type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { ChevronDown, ChevronUp, Plus, Scan, Search, StickyNote, X } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronUp,
+  ClipboardCopy,
+  Plus,
+  Scan,
+  Search,
+  StickyNote,
+  X,
+} from 'lucide-react';
 import {
   CANVAS_MAX_ZOOM,
   CANVAS_MIN_ZOOM,
@@ -92,19 +101,16 @@ const HORIZONTAL_SNAP_DISTANCE = 32;
 // The selected-element toolbar matches the canvas fit button: 26px raised
 // squares separated by 6px, with 15px icons. Keep its measured footprint here
 // so the right side is chosen whenever it actually fits. When neither side has
-// room (a note zoomed to near canvas width), the toolbar floats inside the
-// note, top-aligned below the fit button.
+// room (a note zoomed to near canvas width), the full toolbar is hidden and the
+// canvas fit panel shows only the Insert selected text action.
 const TOOLBAR_GAP = 8;
 const TOOLBAR_BUTTON_SIZE = 26;
-const TOOLBAR_BUTTON_GAP = 6;
-const TOOLBAR_WIDTH = TOOLBAR_BUTTON_SIZE;
-const TOOLBAR_HEIGHT = 5 * TOOLBAR_BUTTON_SIZE + 4 * TOOLBAR_BUTTON_GAP;
+// The unified card adds a small padding and border around the icon column.
+const TOOLBAR_PADDING = 3;
+const TOOLBAR_BORDER = 1;
+const TOOLBAR_WIDTH =
+  TOOLBAR_BUTTON_SIZE + (TOOLBAR_PADDING + TOOLBAR_BORDER) * 2;
 const TOOLBAR_HALF_HEIGHT = 92;
-// Metrics of the top-right canvas-fit panel (11px margin, 26px button, 6px
-// gap). The floating inside toolbar starts directly below the fit button.
-const CANVAS_PANEL_MARGIN = 11;
-const INSIDE_TOOLBAR_TOP =
-  CANVAS_PANEL_MARGIN + TOOLBAR_BUTTON_SIZE + TOOLBAR_BUTTON_GAP;
 
 const SEARCH_HIGHLIGHT_ALL = 'clipcanvas-canvas-search-all';
 const SEARCH_HIGHLIGHT_CURRENT = 'clipcanvas-canvas-search-current';
@@ -329,6 +335,7 @@ function caretShiftForNode(id: string, zoom: number): number {
 interface NoteNodeData extends Record<string, unknown> {
   note: Note;
   fontSize: number;
+  leftPadding: number;
   autosaveDelayMs: number;
   defaultNoteWidth: number;
   active: boolean;
@@ -726,6 +733,37 @@ function CanvasSurface({
     );
   }, [canvasHeight, canvasWidth, nodes, setViewport]);
 
+  // When the active note is too wide for either side, its full toolbar is
+  // hidden and the single insert action moves into the top-right fit panel,
+  // occupying the slot the canvas options menu used to have.
+  const compactInsertVisible = useStore((state) => {
+    if (!activeNoteId) return false;
+    const node = state.nodeLookup.get(activeNoteId);
+    if (!node) return false;
+    const zoom = state.transform[2];
+    const nodeWidth = Number(
+      node.measured?.width ??
+        node.width ??
+        node.style?.width ??
+        settings.defaultNoteWidth,
+    );
+    const nodeHeight = Number(
+      node.measured?.height ?? node.height ?? node.style?.height ?? 340,
+    );
+    if (!Number.isFinite(nodeWidth) || !Number.isFinite(nodeHeight)) return false;
+    const screenX = node.internals.positionAbsolute.x * zoom + state.transform[0];
+    const screenY = node.internals.positionAbsolute.y * zoom + state.transform[1];
+    const visible =
+      screenX + nodeWidth * zoom > 0 &&
+      screenX < state.width &&
+      screenY + nodeHeight * zoom > 0 &&
+      screenY < state.height;
+    const elementRight = screenX + nodeWidth * zoom;
+    const fitsRight = state.width - elementRight >= TOOLBAR_WIDTH + TOOLBAR_GAP;
+    const fitsLeft = screenX >= TOOLBAR_WIDTH + TOOLBAR_GAP;
+    return visible && !fitsRight && !fitsLeft;
+  });
+
   const handleBeginEdit = useCallback(
     (noteId: string, options?: BeginEditOptions) => {
       if (editingNoteId === noteId) return;
@@ -880,6 +918,7 @@ function CanvasSurface({
         const data: NoteNodeData = {
           note: displayedNote,
           fontSize: settings.editorFontSize,
+          leftPadding: settings.editorLeftPadding,
           autosaveDelayMs: Math.round(settings.autosaveDelaySeconds * 1000),
           defaultNoteWidth: settings.defaultNoteWidth,
           active: note.id === activeNoteId,
@@ -953,6 +992,7 @@ function CanvasSurface({
           previous.data.discardWhenEmpty === data.discardWhenEmpty &&
           previous.data.insertion === data.insertion &&
           previous.data.fontSize === data.fontSize &&
+          previous.data.leftPadding === data.leftPadding &&
           previous.data.defaultNoteWidth === data.defaultNoteWidth &&
           previous.style?.width === style.width &&
           previous.style?.height === style.height;
@@ -983,6 +1023,7 @@ function CanvasSurface({
     settings.autosaveDelaySeconds,
     settings.defaultNoteWidth,
     settings.editorFontSize,
+    settings.editorLeftPadding,
   ]);
 
   useEffect(() => {
@@ -1608,6 +1649,19 @@ function CanvasSurface({
           color="var(--line-faint)"
         />
         <Panel position="top-right" className="canvas-fit-panel">
+          {compactInsertVisible ? (
+            <IconButton
+              label="Insert selected text"
+              size="sm"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onClick={() => callbacksRef.current.onInsertSelection()}
+            >
+              <ClipboardCopy size={15} />
+            </IconButton>
+          ) : null}
           <IconButton
             label="Fit canvas to view"
             size="sm"
@@ -1744,44 +1798,29 @@ function NoteNode({ id, data, width, dragging }: NodeProps<NoteCanvasNode>) {
   const elementRight = screenX + screenWidth;
   const fitsRight = canvasWidth - elementRight >= TOOLBAR_WIDTH + TOOLBAR_GAP;
   const fitsLeft = screenX >= TOOLBAR_WIDTH + TOOLBAR_GAP;
-  // Right first, then left, then floating inside the note. A near-full-width
-  // note leaves no room beside it, so anchoring the toolbar inside keeps it
-  // visible and reachable.
-  const toolbarPlacement = fitsRight ? 'right' : fitsLeft ? 'left' : 'inside';
+  // Right first, then left. When neither side fits, the full toolbar is hidden
+  // and the canvas fit panel renders the single Insert selected text action in
+  // the slot the canvas options menu used to occupy.
+  const isInside = !fitsRight && !fitsLeft;
+  const toolbarPlacement = fitsRight ? 'right' : 'left';
   const toolbarX =
     toolbarPlacement === 'right'
       ? elementRight + TOOLBAR_GAP
-      : toolbarPlacement === 'left'
-        ? screenX - TOOLBAR_GAP
-        : // Line up with the fit button's column at the top-right of the canvas.
-          canvasWidth - CANVAS_PANEL_MARGIN;
-  // Outside the note the toolbar stays centered on the visible slice. Inside
-  // the note it sticks below the fit button, then moves up once the note's
-  // bottom (or top) boundary would be crossed.
+      : screenX - TOOLBAR_GAP;
+  // The toolbar stays centered on the visible slice of the note.
   const visibleTop = Math.max(0, screenY);
   const visibleBottom = Math.min(canvasHeight, screenY + screenHeight);
   const visibleCenterY =
     visibleBottom > visibleTop
       ? (visibleTop + visibleBottom) / 2
       : screenY + screenHeight / 2;
-  const outsideToolbarY = Math.min(
+  const toolbarY = Math.min(
     Math.max(TOOLBAR_HALF_HEIGHT, visibleCenterY),
     Math.max(TOOLBAR_HALF_HEIGHT, canvasHeight - TOOLBAR_HALF_HEIGHT),
   );
-  const insideMinY = screenY + TOOLBAR_GAP;
-  const insideMaxY = Math.max(
-    insideMinY,
-    screenY + screenHeight - TOOLBAR_HEIGHT - TOOLBAR_GAP,
-  );
-  const insideToolbarY = Math.max(
-    insideMinY,
-    Math.min(INSIDE_TOOLBAR_TOP, insideMaxY),
-  );
-  const isInside = toolbarPlacement === 'inside';
-  const toolbarY = isInside ? insideToolbarY : outsideToolbarY;
   const toolbarTransform = `translate(${toolbarX}px, ${toolbarY}px) translate(${
     toolbarPlacement === 'right' ? 0 : -100
-  }%, ${isInside ? 0 : -50}%)`;
+  }%, -50%)`;
   const nodeVisible =
     screenX + screenWidth > 0 &&
     screenX < canvasWidth &&
@@ -1955,7 +1994,7 @@ function NoteNode({ id, data, width, dragging }: NodeProps<NoteCanvasNode>) {
 
   return (
     <>
-      {data.active && nodeVisible ? (
+      {data.active && nodeVisible && !isInside ? (
         <NodeToolbar
           isVisible
           position={toolbarPlacement === 'left' ? Position.Left : Position.Right}
@@ -2035,6 +2074,7 @@ function NoteNode({ id, data, width, dragging }: NodeProps<NoteCanvasNode>) {
       <NoteCard
         note={data.note}
         fontSize={data.fontSize}
+        leftPadding={data.leftPadding}
         autosaveDelayMs={data.autosaveDelayMs}
         canvasZoom={viewport.zoom}
         active={data.active}

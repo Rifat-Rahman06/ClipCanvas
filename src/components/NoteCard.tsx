@@ -42,6 +42,7 @@ export interface BeginEditOptions {
 interface NoteCardProps {
   note: Note;
   fontSize: number;
+  leftPadding: number;
   autosaveDelayMs: number;
   canvasZoom: number;
   active: boolean;
@@ -77,6 +78,7 @@ interface NoteCardProps {
 export function NoteCard({
   note,
   fontSize,
+  leftPadding,
   autosaveDelayMs,
   canvasZoom,
   active,
@@ -585,6 +587,9 @@ export function NoteCard({
       style={
         {
           '--note-font-size': `${fontSize}px`,
+          // Drives the scroll container's left padding so the setting changes
+          // where text starts without moving or resizing the note itself.
+          '--note-left-padding': `${leftPadding}px`,
           // Counter-scale inline badges so they stay readable at every canvas
           // zoom level instead of shrinking with the note.
           '--note-badge-scale': `${1 / Math.max(0.005, canvasZoom)}`,

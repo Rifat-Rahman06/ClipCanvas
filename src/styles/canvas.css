@@ -45,15 +45,24 @@
 .react-flow__panel.canvas-fit-panel {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin: 11px;
+  /* Relative units keep the two-icon gap and the panel inset tied to the
+     application's rem scale instead of hard-coded pixels. */
+  gap: 0.5rem;
+  margin: 0.6875rem;
 }
 
 .canvas-fit-panel .icon-btn {
+  width: 1.625rem;
+  height: 1.625rem;
   border-color: var(--line);
   background: var(--surface-raised);
   color: var(--ink-500);
   box-shadow: var(--shadow-sm);
+}
+
+.canvas-fit-panel .icon-btn svg {
+  width: 0.9375rem;
+  height: 0.9375rem;
 }
 
 .canvas-fit-panel .icon-btn:hover:not(:disabled) {
@@ -164,20 +173,25 @@
   max-width: calc(100vw - 24px);
 }
 
+/* One continuous vertical container: the icons share a single raised card
+   instead of each looking like a separate rectangular button. */
 .active-note-toolbar {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
 }
 
-/* Match the top-right canvas-fit button so each action reads as the same
-   26px raised square instead of sharing one wide padded card. */
 .active-note-toolbar .icon-btn {
-  border-color: var(--line);
-  background: var(--surface-raised);
+  border-color: transparent;
+  background: transparent;
   color: var(--ink-500);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
 }
 
 .active-note-toolbar .icon-btn:not(.icon-btn-danger):hover:not(:disabled) {
@@ -341,7 +355,9 @@
   flex: 1 1 auto;
   min-height: 0;
   max-height: none;
-  padding: 2px 8px 14px;
+  /* Left padding follows the Editor left padding setting; the right, top, and
+     bottom values stay fixed so only the text start moves. */
+  padding: 2px 8px 14px var(--note-left-padding, 8px);
   overflow: visible;
 }
 

@@ -8,6 +8,9 @@ export const LEGACY_BACKUP_FORMAT = 'folio-research-notebook';
 export const EDITOR_FONT_SIZE_MIN = 13;
 export const EDITOR_FONT_SIZE_MAX = 22;
 export const EDITOR_FONT_SIZE_DEFAULT = 16;
+export const EDITOR_LEFT_PADDING_MIN = 0;
+export const EDITOR_LEFT_PADDING_MAX = 64;
+export const EDITOR_LEFT_PADDING_DEFAULT = 8;
 export const SINGLE_CLICK_ZOOM_MIN = 0.5;
 export const SINGLE_CLICK_ZOOM_MAX = 2.5;
 export const SINGLE_CLICK_ZOOM_DEFAULT = 1;
@@ -163,6 +166,8 @@ export interface AppSettings {
   /** Typeface used for note text and previews. */
   editorFontFamily: EditorFontFamily;
   editorFontSize: number;
+  /** Empty space between a note's left edge and the start of its text. */
+  editorLeftPadding: number;
   /** Seconds of inactivity before an edited note is saved. */
   autosaveDelaySeconds: number;
   /**

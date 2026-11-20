@@ -28,6 +28,9 @@ import {
   EDITOR_FONT_SIZE_DEFAULT,
   EDITOR_FONT_SIZE_MAX,
   EDITOR_FONT_SIZE_MIN,
+  EDITOR_LEFT_PADDING_DEFAULT,
+  EDITOR_LEFT_PADDING_MAX,
+  EDITOR_LEFT_PADDING_MIN,
   NOTE_HIGHLIGHT_COLOR_DEFAULT,
   SCHEMA_VERSION,
   SINGLE_CLICK_ZOOM_DEFAULT,
@@ -111,6 +114,10 @@ export function SettingsView({ onClose, onImported }: SettingsViewProps) {
   const fontDraftRef = useRef(EDITOR_FONT_SIZE_DEFAULT);
   const fontDirtyRef = useRef(false);
   const savedFontSize = data?.settings.editorFontSize;
+  const [leftPadding, setLeftPadding] = useState(EDITOR_LEFT_PADDING_DEFAULT);
+  const leftPaddingDraftRef = useRef(EDITOR_LEFT_PADDING_DEFAULT);
+  const leftPaddingDirtyRef = useRef(false);
+  const savedLeftPadding = data?.settings.editorLeftPadding;
   const [autosaveDelay, setAutosaveDelay] = useState(AUTOSAVE_DELAY_SECONDS_DEFAULT);
   const autosaveDraftRef = useRef(AUTOSAVE_DELAY_SECONDS_DEFAULT);
   const autosaveDirtyRef = useRef(false);
@@ -172,6 +179,37 @@ export function SettingsView({ onClose, onImported }: SettingsViewProps) {
     }, 350);
     return () => window.clearTimeout(timer);
   }, [fontSize, notify, savedFontSize, updateSettings]);
+
+  useEffect(() => {
+    if (savedLeftPadding === undefined || leftPaddingDirtyRef.current) return;
+    leftPaddingDraftRef.current = savedLeftPadding;
+    setLeftPadding(savedLeftPadding);
+  }, [savedLeftPadding]);
+
+  useEffect(() => {
+    if (savedLeftPadding === undefined || leftPadding === savedLeftPadding) return;
+    const timer = window.setTimeout(() => {
+      void updateSettings({ editorLeftPadding: leftPadding })
+        .then(() => {
+          if (leftPaddingDraftRef.current === leftPadding) leftPaddingDirtyRef.current = false;
+        })
+        .catch((error) => {
+          if (leftPaddingDraftRef.current === leftPadding) {
+            leftPaddingDirtyRef.current = false;
+            leftPaddingDraftRef.current = savedLeftPadding;
+            setLeftPadding(savedLeftPadding);
+          }
+          notify({
+            kind: 'error',
+            message:
+              error instanceof Error
+                ? error.message
+                : 'The editor left padding could not be saved.',
+          });
+        });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [leftPadding, notify, savedLeftPadding, updateSettings]);
 
   useEffect(() => {
     if (savedAutosaveDelay === undefined || autosaveDirtyRef.current) return;
@@ -414,6 +452,12 @@ export function SettingsView({ onClose, onImported }: SettingsViewProps) {
     setAutosaveDelay(value);
   };
 
+  const handleLeftPaddingChange = (value: number) => {
+    leftPaddingDraftRef.current = value;
+    leftPaddingDirtyRef.current = true;
+    setLeftPadding(value);
+  };
+
   const handleSingleClickZoomChange = (value: number) => {
     zoomDraftRef.current = value;
     zoomDirtyRef.current = true;
@@ -610,6 +654,30 @@ export function SettingsView({ onClose, onImported }: SettingsViewProps) {
           </div>
           <div className="settings-field-row settings-zoom-row">
             <div>
+              <span className="settings-field-title">Editor left padding</span>
+              <span className="settings-field-description">
+                Space between the note's left edge and the start of its text.
+              </span>
+            </div>
+            <div className="font-size-control">
+              <input
+                id="editor-left-padding"
+                type="range"
+                min={EDITOR_LEFT_PADDING_MIN}
+                max={EDITOR_LEFT_PADDING_MAX}
+                step={1}
+                value={leftPadding}
+                aria-label="Editor left padding"
+                aria-valuetext={`${leftPadding} pixels`}
+                onChange={(event) => handleLeftPaddingChange(Number(event.target.value))}
+              />
+              <output className="font-size-value" htmlFor="editor-left-padding">
+                {leftPadding}px
+              </output>
+            </div>
+          </div>
+          <div className="settings-field-row settings-zoom-row">
+            <div>
               <span className="settings-field-title">Font family</span>
               <span className="settings-field-description">
                 Typeface used for note text and previews.
@@ -703,7 +771,7 @@ export function SettingsView({ onClose, onImported }: SettingsViewProps) {
                 type="range"
                 min={Math.round(SINGLE_CLICK_ZOOM_MIN * 100)}
                 max={Math.round(SINGLE_CLICK_ZOOM_MAX * 100)}
-                step={5}
+                step={1}
                 value={Math.round(singleClickZoom * 100)}
                 aria-label="Single-click zoom strength"
                 aria-valuetext={`${Math.round(singleClickZoom * 100)} percent`}

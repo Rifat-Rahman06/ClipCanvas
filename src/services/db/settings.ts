@@ -13,6 +13,9 @@ import {
   EDITOR_FONT_SIZE_DEFAULT,
   EDITOR_FONT_SIZE_MAX,
   EDITOR_FONT_SIZE_MIN,
+  EDITOR_LEFT_PADDING_DEFAULT,
+  EDITOR_LEFT_PADDING_MAX,
+  EDITOR_LEFT_PADDING_MIN,
   NOTE_HIGHLIGHT_COLOR_DEFAULT,
   SCHEMA_VERSION,
   SINGLE_CLICK_ZOOM_DEFAULT,
@@ -30,6 +33,16 @@ function normalizeEditorFontSize(value: unknown): number {
     return EDITOR_FONT_SIZE_DEFAULT;
   }
   return Math.min(EDITOR_FONT_SIZE_MAX, Math.max(EDITOR_FONT_SIZE_MIN, Math.round(value)));
+}
+
+function normalizeEditorLeftPadding(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return EDITOR_LEFT_PADDING_DEFAULT;
+  }
+  return Math.min(
+    EDITOR_LEFT_PADDING_MAX,
+    Math.max(EDITOR_LEFT_PADDING_MIN, Math.round(value)),
+  );
 }
 
 function normalizeAutosaveDelaySeconds(value: unknown): number {
@@ -102,6 +115,7 @@ export function defaultSettings(): AppSettings {
     theme: THEME_DEFAULT,
     editorFontFamily: EDITOR_FONT_FAMILY_DEFAULT,
     editorFontSize: EDITOR_FONT_SIZE_DEFAULT,
+    editorLeftPadding: EDITOR_LEFT_PADDING_DEFAULT,
     autosaveDelaySeconds: AUTOSAVE_DELAY_SECONDS_DEFAULT,
     singleClickZoom: SINGLE_CLICK_ZOOM_DEFAULT,
     touchpadZoomSensitivity: TOUCHPAD_ZOOM_SENSITIVITY_DEFAULT,
@@ -138,6 +152,7 @@ export function normalizeSettings(
       ? value.editorFontFamily
       : defaults.editorFontFamily,
     editorFontSize: normalizeEditorFontSize(value.editorFontSize),
+    editorLeftPadding: normalizeEditorLeftPadding(value.editorLeftPadding),
     autosaveDelaySeconds: normalizeAutosaveDelaySeconds(value.autosaveDelaySeconds),
     singleClickZoom: normalizeSingleClickZoom(value.singleClickZoom),
     touchpadZoomSensitivity: normalizeTouchpadZoomSensitivity(

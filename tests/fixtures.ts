@@ -64,6 +64,7 @@ export function makeDataset(): NotebookDataset {
       theme: 'light',
       editorFontFamily: 'inter',
       editorFontSize: 16,
+      editorLeftPadding: 8,
       autosaveDelaySeconds: 1,
       singleClickZoom: 1,
       touchpadZoomSensitivity: 1,
