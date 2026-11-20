@@ -505,6 +505,79 @@ export function textFromHtmlWithBreaks(html: string): string {
     .trim();
 }
 
+/**
+ * Clipboard serializer for Ctrl+C inside the editor. Unlike
+ * `textFromHtmlWithBreaks`, blocks keep a blank line between them, table cells
+ * are tab-separated, and list items keep their bullet or number with nesting
+ * indented, so copied prose reads naturally and never exposes Markdown syntax
+ * such as `**`, `##`, or `-`.
+ */
+export function textFromHtmlForCopy(html: string): string {
+  if (!html.trim()) return '';
+  const withImages = html
+    // Keep the image description instead of dropping the whole node.
+    .replace(/<img\b[^>]*>/gi, (tag) => {
+      const alt = /\balt\s*=\s*"([^"]*)"/i.exec(tag)?.[1] ?? '';
+      return alt.trim() ? ` ${alt.trim()} ` : '';
+    });
+  // Table cells become tab-separated values. Their inner block markup is
+  // flattened first so a cell never splits its row into extra lines.
+  const withCells = withImages
+    .replace(
+      /<(td|th)\b[^>]*>([\s\S]*?)<\/\1>/gi,
+      (_match, _tag: string, cell: string) =>
+        `${cell.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()}\t`,
+    )
+    .replace(/<\/(td|th)>/gi, '\t');
+  // Lists keep their own counters: ordered items stay numbered, nested items
+  // stay indented, and nothing turns into a Markdown `-` marker.
+  const lists: { ordered: boolean; next: number }[] = [];
+  const withLists = withCells.replace(
+    /<(\/?)(ul|ol|li)\b([^>]*)>/gi,
+    (_match, closing: string, tag: string, attributes: string) => {
+      const name = tag.toLowerCase();
+      if (name === 'li') {
+        if (closing) return '\n';
+        const parent = lists[lists.length - 1];
+        const marker = parent?.ordered ? `${parent.next++}. ` : '• ';
+        return `${'\t'.repeat(Math.max(0, lists.length - 1))}${marker}`;
+      }
+      if (closing) {
+        lists.pop();
+        return '\n';
+      }
+      const start = /\bstart\s*=\s*"?(\d+)/i.exec(attributes)?.[1];
+      lists.push({ ordered: name === 'ol', next: Number(start) || 1 });
+      return '';
+    },
+  );
+  const withBreaks = withLists
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/tr>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|blockquote|pre|table)>/gi, '\n\n');
+  const plain = sanitizeHtml(withBreaks, {
+    allowedTags: [],
+    allowedAttributes: {},
+  });
+  const lines = decodeBasicEntities(plain)
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/^[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .split('\n');
+  // A list item's inner paragraph adds a blank line before the next item.
+  // Drop it so a list stays one block, while paragraphs keep their blank line.
+  const isListItem = (line: string | undefined) =>
+    Boolean(line && /^\s*(?:•|\d+\.)\s/.test(line));
+  return lines
+    .filter(
+      (line, index) =>
+        line.trim() !== '' ||
+        !(isListItem(lines[index - 1]) && isListItem(lines[index + 1])),
+    )
+    .join('\n')
+    .trim();
+}
+
 /** Appends a new rich-text passage to existing note HTML. */
 export function appendHtml(existingHtml: string, additionHtml: string): string {
   const left = existingHtml.trim();

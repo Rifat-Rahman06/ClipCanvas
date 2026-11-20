@@ -29,6 +29,7 @@ import {
   isStructuredClipboard,
   looksLikeBlockMarkdown,
   textFromHtml,
+  textFromHtmlForCopy,
 } from '../../lib/richText';
 import { useToast } from '../../state/ToastContext';
 import { AttachmentImage } from './AttachmentImage';
@@ -164,19 +165,19 @@ export function RichTextEditor({
       // panning the canvas viewport instead of moving the edited node.
       handleScrollToSelection: () => true,
       // A collapsed caret keeps native behaviour (nothing to copy). With a
-      // selection, write only Markdown to text/plain so copied content keeps its
-      // syntax and never turns into rich HTML.
+      // selection, write only readable plain text to text/plain, keeping
+      // paragraph breaks without exposing any Markdown syntax.
       handleDOMEvents: {
         copy: (view, event) => {
           if (view.state.selection.empty) return false;
           const data = (event as ClipboardEvent).clipboardData;
           if (!data) return false;
           const { dom } = view.serializeForClipboard(view.state.selection.content());
-          const markdown = htmlToMarkdownForCopy((dom as HTMLElement).innerHTML);
-          if (!markdown.trim()) return false;
+          const plainText = textFromHtmlForCopy((dom as HTMLElement).innerHTML);
+          if (!plainText.trim()) return false;
           event.preventDefault();
           data.clearData();
-          data.setData('text/plain', markdown);
+          data.setData('text/plain', plainText);
           return true;
         },
       },
