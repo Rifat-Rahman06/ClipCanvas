@@ -1,8 +1,10 @@
+import { type MouseEvent } from 'react';
 import {
   Clipboard,
   ClipboardCopy,
   Download,
   Trash2,
+  ZoomIn,
 } from 'lucide-react';
 import type { Note, NoteContentSnapshot } from '../types';
 import { noteDisplayTitle } from '../lib/utils';
@@ -17,6 +19,7 @@ interface ActiveNoteToolbarProps {
   getLiveContent: (noteId: string) => NoteContentSnapshot | null;
   onNoteAction: (noteId: string, action: NoteCardAction) => void;
   onInsertSelection: () => void;
+  onZoomNote: (event: MouseEvent<HTMLButtonElement>) => void;
 }
 
 /**
@@ -29,6 +32,7 @@ export function ActiveNoteToolbar({
   getLiveContent,
   onNoteAction,
   onInsertSelection,
+  onZoomNote,
 }: ActiveNoteToolbarProps) {
   const { notify } = useToast();
 
@@ -100,6 +104,13 @@ export function ActiveNoteToolbar({
         onClick={() => onNoteAction(note.id, 'delete')}
       >
         <Trash2 size={15} />
+      </IconButton>
+      <IconButton
+        label="Zoom in to note"
+        size="sm"
+        onClick={onZoomNote}
+      >
+        <ZoomIn size={15} />
       </IconButton>
     </div>
   );

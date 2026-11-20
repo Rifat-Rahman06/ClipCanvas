@@ -98,7 +98,7 @@ const TOOLBAR_GAP = 8;
 const TOOLBAR_BUTTON_SIZE = 26;
 const TOOLBAR_BUTTON_GAP = 6;
 const TOOLBAR_WIDTH = TOOLBAR_BUTTON_SIZE;
-const TOOLBAR_HEIGHT = 4 * TOOLBAR_BUTTON_SIZE + 3 * TOOLBAR_BUTTON_GAP;
+const TOOLBAR_HEIGHT = 5 * TOOLBAR_BUTTON_SIZE + 4 * TOOLBAR_BUTTON_GAP;
 const TOOLBAR_HALF_HEIGHT = 92;
 // Metrics of the top-right canvas-fit panel (11px margin, 26px button, 6px
 // gap). The floating inside toolbar starts directly below the fit button.
@@ -251,30 +251,32 @@ function focusZoomForElement(
 }
 
 /**
- * Returns the vertical viewport shift (in flow units) needed to keep the
- * focused collapsed caret inside the canvas. Positive values move the content
- * up. The caret itself is measured in screen coordinates, so the shift is
- * divided by the zoom.
+ * Measures the collapsed caret of the focused note, in client coordinates.
+ * Returns the note's viewport container alongside the rect so callers can
+ * relate the caret to the canvas bounds. An active caret inside this note is
+ * the only case that produces a result.
  */
-function caretShiftForNode(id: string, zoom: number): number {
-  if (typeof window === 'undefined' || !Number.isFinite(zoom) || zoom <= 0) return 0;
+function caretSelectionForNode(
+  id: string,
+): { rect: DOMRect; container: HTMLElement } | null {
+  if (typeof window === 'undefined') return null;
   const active = document.activeElement;
-  if (!(active instanceof HTMLElement) || !active.isContentEditable) return 0;
+  if (!(active instanceof HTMLElement) || !active.isContentEditable) return null;
   const nodeElement = active.closest('.react-flow__node');
-  if (!nodeElement || nodeElement.getAttribute('data-id') !== id) return 0;
+  if (!nodeElement || nodeElement.getAttribute('data-id') !== id) return null;
   const container = nodeElement.closest('.react-flow');
-  if (!(container instanceof HTMLElement)) return 0;
+  if (!(container instanceof HTMLElement)) return null;
 
   const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return 0;
+  if (!selection || selection.rangeCount === 0) return null;
   // Ctrl+A and dragged text selections intentionally span content. Moving the
   // canvas while a multi-character selection is being built makes the
   // selection jump, so only follow a collapsed caret.
-  if (!selection.isCollapsed) return 0;
+  if (!selection.isCollapsed) return null;
 
   let rect: DOMRect | null = null;
   const focusNode = selection.focusNode;
-  if (focusNode && !nodeElement.contains(focusNode)) return 0;
+  if (focusNode && !nodeElement.contains(focusNode)) return null;
   if (focusNode) {
     try {
       const caret = document.createRange();
@@ -292,14 +294,29 @@ function caretShiftForNode(id: string, zoom: number): number {
   // Fall back to the selection range when the collapsed caret has no usable
   // rectangle (an empty paragraph can report a zero rect in some browsers).
   if (!rect) {
-    if (selection.rangeCount === 0) return 0;
+    if (selection.rangeCount === 0) return null;
     const range = selection.getRangeAt(0);
-    if (range.getClientRects().length === 0) return 0;
+    if (range.getClientRects().length === 0) return null;
     rect = range.getBoundingClientRect();
   }
-  if (!rect || !Number.isFinite(rect.top) || !Number.isFinite(rect.bottom)) return 0;
+  if (!rect || !Number.isFinite(rect.top) || !Number.isFinite(rect.bottom)) return null;
   // An all-zero rect is a missing measurement, not the top-left of the canvas.
-  if (rect.width === 0 && rect.height === 0 && rect.left === 0 && rect.top === 0) return 0;
+  if (rect.width === 0 && rect.height === 0 && rect.left === 0 && rect.top === 0) return null;
+
+  return { rect, container };
+}
+
+/**
+ * Returns the vertical viewport shift (in flow units) needed to keep the
+ * focused collapsed caret inside the canvas. Positive values move the content
+ * up. The caret itself is measured in screen coordinates, so the shift is
+ * divided by the zoom.
+ */
+function caretShiftForNode(id: string, zoom: number): number {
+  if (!Number.isFinite(zoom) || zoom <= 0) return 0;
+  const caret = caretSelectionForNode(id);
+  if (!caret) return 0;
+  const { rect, container } = caret;
 
   const containerRect = container.getBoundingClientRect();
   const safeTop = containerRect.top + CARET_VIEWPORT_MARGIN;
@@ -334,6 +351,8 @@ interface NoteNodeData extends Record<string, unknown> {
   onEditorReady: (noteId: string, editor: Editor | null) => void;
   onDiscardEmpty: (noteId: string) => void;
   onInsertSelection: () => void;
+  /** Reuses the single-click note zoom, optionally around a focal point. */
+  onZoomNote: (noteId: string, anchor?: EditAnchor) => void;
   onLayoutChange: (noteId: string, layout: NoteLayout) => void;
   /** Latest in-memory content for copy/download while an edit session is open. */
   getLiveContent: (noteId: string) => NoteContentSnapshot | null;
@@ -581,6 +600,14 @@ function CanvasSurface({
     ],
   );
 
+  // Node data captures callbacks when the node tree is rebuilt, so route the
+  // toolbar zoom through a ref to always use the latest single-click focus.
+  const focusNoteRef = useRef(focusNote);
+  focusNoteRef.current = focusNote;
+  const handleZoomNote = useCallback((noteId: string, anchor?: EditAnchor) => {
+    focusNoteRef.current(noteId, anchor);
+  }, []);
+
   const focusSearchMatch = useCallback(
     (match: CanvasSearchMatch) => {
       const canvasElement = canvasRef.current;
@@ -792,6 +819,7 @@ function CanvasSurface({
     onNoteAction,
     onActivate,
     onInsertSelection,
+    onZoomNote: handleZoomNote,
     onBeginEdit: handleBeginEdit,
     onBeginResize: handleBeginResize,
     onEndResize: handleEndResize,
@@ -808,6 +836,7 @@ function CanvasSurface({
     onNoteAction,
     onActivate,
     onInsertSelection,
+    onZoomNote: handleZoomNote,
     onBeginEdit: handleBeginEdit,
     onBeginResize: handleBeginResize,
     onEndResize: handleEndResize,
@@ -869,6 +898,7 @@ function CanvasSurface({
           onEditorReady: callbacks.onEditorReady,
           onDiscardEmpty: callbacks.onDiscardEmptyNote,
           onInsertSelection: callbacks.onInsertSelection,
+          onZoomNote: callbacks.onZoomNote,
           onLayoutChange: callbacks.onNoteLayoutChange,
           getLiveContent: callbacks.getLiveContent,
           onRegisterLiveContent: callbacks.onRegisterLiveContent,
@@ -1893,6 +1923,36 @@ function NoteNode({ id, data, width, dragging }: NodeProps<NoteCanvasNode>) {
   // NoteCard): ProseMirror reports every edit and selection move, which is the
   // only reliable signal inside the transformed canvas.
 
+  /**
+   * The toolbar's zoom button reuses the single-click focus. While the element
+   * is being edited the caret is the focal point; otherwise the toolbar's own
+   * position is used so the zoom keeps the area the user is looking at.
+   */
+  const handleZoomNote = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const caret = dataRef.current.editing ? caretSelectionForNode(id) : null;
+      if (caret) {
+        dataRef.current.onZoomNote(id, {
+          x: caret.rect.left + caret.rect.width / 2,
+          y: caret.rect.top + caret.rect.height / 2,
+        });
+        return;
+      }
+      const toolbar = event.currentTarget.closest('.active-note-toolbar');
+      const toolbarRect =
+        toolbar instanceof HTMLElement ? toolbar.getBoundingClientRect() : null;
+      if (toolbarRect && toolbarRect.height > 0) {
+        dataRef.current.onZoomNote(id, {
+          x: toolbarRect.left + toolbarRect.width / 2,
+          y: toolbarRect.top + toolbarRect.height / 2,
+        });
+        return;
+      }
+      dataRef.current.onZoomNote(id);
+    },
+    [id],
+  );
+
   return (
     <>
       {data.active && nodeVisible ? (
@@ -1910,6 +1970,7 @@ function NoteNode({ id, data, width, dragging }: NodeProps<NoteCanvasNode>) {
             getLiveContent={data.getLiveContent}
             onNoteAction={data.onNoteAction}
             onInsertSelection={data.onInsertSelection}
+            onZoomNote={handleZoomNote}
           />
         </NodeToolbar>
       ) : null}
