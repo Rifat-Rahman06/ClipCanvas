@@ -57,6 +57,7 @@ import {
   type UpdateNoteOptions,
 } from '../types';
 import { defaultNoteLayout } from '../services/db/repository';
+import { useSelectionAutoScroll } from '../hooks/useSelectionAutoScroll';
 import { Button, IconButton } from './Button';
 import { ActionMenu } from './ActionMenu';
 import { ActiveNoteToolbar } from './ActiveNoteToolbar';
@@ -473,6 +474,9 @@ function CanvasSurface({
   // centering is available only at exactly that zoom level.
   const focusZoomRef = useRef<{ noteId: string; zoom: number } | null>(null);
   const horizontalSnapGestureRef = useRef(false);
+  // True while a text-selection drag is panning the canvas. Those per-frame
+  // pans are transient; only the final viewport is persisted.
+  const selectionScrollActiveRef = useRef(false);
   const editorsRef = useRef(new Map<string, Editor>());
   const liveContentRef = useRef(new Map<string, () => NoteContentSnapshot>());
   const pendingLayoutsRef = useRef(new Map<string, NoteLayout>());
@@ -1111,6 +1115,30 @@ function CanvasSurface({
     viewportInteractedAtRef.current = performance.now();
   }, []);
 
+  const getCanvasRect = useCallback(
+    () => canvasRef.current?.getBoundingClientRect() ?? null,
+    [],
+  );
+
+  const handleSelectionScrollStart = useCallback(() => {
+    selectionScrollActiveRef.current = true;
+  }, []);
+
+  const handleSelectionScrollEnd = useCallback(() => {
+    selectionScrollActiveRef.current = false;
+    markViewportInteraction();
+    // Persist the final viewport once: the per-frame pans above are transient.
+    onViewportChange(canvas.id, getViewport());
+  }, [canvas.id, getViewport, markViewportInteraction, onViewportChange]);
+
+  const { begin: beginSelectionAutoScroll } = useSelectionAutoScroll({
+    getViewport,
+    setViewport,
+    getCanvasRect,
+    onScrollStart: handleSelectionScrollStart,
+    onScrollEnd: handleSelectionScrollEnd,
+  });
+
   /**
    * Viewport X that centers the note focused by a single click. Sticky
    * centering is available only at the exact zoom that click established.
@@ -1177,6 +1205,9 @@ function CanvasSurface({
   const handleMoveEnd: OnMoveEnd = useCallback(
     (_event, viewport) => {
       markViewportInteraction();
+      // Auto-scrolling a selection pans the canvas every frame. Only the final
+      // viewport is saved, when the drag ends.
+      if (selectionScrollActiveRef.current) return;
       // Search results move the viewport locally to reveal each match. Saving
       // those transient moves would recreate canvas state on every keystroke.
       if (performance.now() - searchViewportMoveAtRef.current < 1000) return;
@@ -1426,6 +1457,33 @@ function CanvasSurface({
   const handleCanvasPointerDownCapture = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       const target = event.target;
+      // Pan the canvas when a text-selection drag reaches a vertical edge, so a
+      // note longer than the viewport can be selected without releasing the
+      // mouse button. Shift-clicks and multi-clicks have their own selection
+      // semantics and are left untouched.
+      if (
+        event.button === 0 &&
+        event.pointerType === 'mouse' &&
+        !event.shiftKey &&
+        event.detail <= 1 &&
+        target instanceof Element
+      ) {
+        const content = target.closest('.ProseMirror');
+        // Dragging an image or another draggable node is not a text selection.
+        const draggable = target.closest('.ProseMirror img, .ProseMirror [draggable="true"]');
+        const noteId = content?.closest('.react-flow__node')?.getAttribute('data-id');
+        const editor = noteId ? editorsRef.current.get(noteId) : null;
+        if (
+          content &&
+          !draggable &&
+          editor &&
+          !editor.isDestroyed &&
+          editor.isEditable
+        ) {
+          beginSelectionAutoScroll(editor, { x: event.clientX, y: event.clientY });
+        }
+      }
+
       const insideNote =
         target instanceof Element &&
         Boolean(
@@ -1455,7 +1513,7 @@ function CanvasSurface({
 
       leaveEditorSession();
     },
-    [activeNoteId, editingNoteId, leaveEditorSession, resizingNoteId],
+    [activeNoteId, beginSelectionAutoScroll, editingNoteId, leaveEditorSession, resizingNoteId],
   );
 
   const handleCanvasDoubleClick = useCallback(

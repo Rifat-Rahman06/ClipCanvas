@@ -352,7 +352,9 @@ export function RichTextEditor({
   const bubbleMenuAppendTo = useCallback(() => document.body, []);
   const bubbleMenuOptions = useMemo(
     () => ({
-      placement: 'top' as const,
+      // `top-start` aligns the menu's left edge with the caret and lets it grow
+      // to the right, instead of centering it over the caret.
+      placement: 'top-start' as const,
       offset: 8,
       strategy: 'fixed' as const,
       flip: true,
