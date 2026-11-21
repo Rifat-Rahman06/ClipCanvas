@@ -27,6 +27,7 @@ import {
 import { getDb, SETTINGS_KEY, type ClipCanvasDB } from './database';
 import { revokeAllAttachmentUrls, revokeAttachmentUrls } from './attachments';
 import { defaultSettings, normalizeSettings } from './settings';
+import { findNotePlacement } from '../canvas/placement';
 
 export const NOTE_WIDTH_DEFAULT = DEFAULT_NOTE_WIDTH_DEFAULT;
 export const NOTE_HEIGHT_DEFAULT = 340;
@@ -106,22 +107,6 @@ export function defaultNoteLayout(index = 0, width = NOTE_WIDTH_DEFAULT): NoteLa
     zIndex: index + 1,
     widthLocked: false,
   };
-}
-
-function nextLayoutIndex(notes: Note[], width = NOTE_WIDTH_DEFAULT): number {
-  const occupied = new Set(
-    notes
-      .filter((note) => note.layout)
-      .map((note) => {
-        const layout = note.layout as NoteLayout;
-        return `${Math.round(layout.x)}:${Math.round(layout.y)}`;
-      }),
-  );
-  for (let index = 0; index < 10_000; index += 1) {
-    const candidate = defaultNoteLayout(index, width);
-    if (!occupied.has(`${candidate.x}:${candidate.y}`)) return index;
-  }
-  return notes.length;
 }
 
 function cleanLayout(
@@ -541,13 +526,34 @@ export async function createNote(input: NoteInput): Promise<Note> {
   const project = await assertProjectExists(tx.objectStore('projects'), input.projectId);
   const canvas = await resolveCanvasForNewNote(tx, input.projectId, input.canvasId, timestamp);
   const canvasNotes = await tx.objectStore('notes').index('by-canvas').getAll(canvas.id);
-  const layoutIndex = nextLayoutIndex(canvasNotes, settings.defaultNoteWidth);
+  let layout = input.layout;
+  if (!layout) {
+    const placement = findNotePlacement({
+      notes: canvasNotes,
+      width: settings.defaultNoteWidth,
+      height: NOTE_HEIGHT_DEFAULT,
+      reference: canvas.viewport,
+      gap: NOTE_GAP,
+    });
+    const topZ = canvasNotes.reduce(
+      (highest, existing) => Math.max(highest, existing.layout?.zIndex ?? 0),
+      0,
+    );
+    layout = {
+      x: placement.x,
+      y: placement.y,
+      width: settings.defaultNoteWidth,
+      height: NOTE_HEIGHT_DEFAULT,
+      zIndex: topZ + 1,
+      widthLocked: false,
+    };
+  }
   const note = buildNote(
-    input,
+    { ...input, layout },
     input.projectId,
     canvas.id,
     timestamp,
-    layoutIndex,
+    0,
     settings.defaultNoteWidth,
   );
   await tx.objectStore('notes').add(note);
@@ -588,7 +594,7 @@ export async function createProjectWithNote(
 export async function updateNote(id: string, patch: NotePatch): Promise<Note> {
   const db = await getDb();
   const tx = db.transaction(
-    ['projects', 'canvases', 'notes', 'attachments'],
+    ['projects', 'canvases', 'notes', 'settings', 'attachments'],
     'readwrite',
   );
   const notes = tx.objectStore('notes');
@@ -678,7 +684,34 @@ export async function updateNote(id: string, patch: NotePatch): Promise<Note> {
   let layout = patch.layout === undefined ? existing.layout : cleanLayout(patch.layout);
   if (canvasChanged && patch.layout === undefined) {
     const targetNotes = await notes.index('by-canvas').getAll(canvasId);
-    layout = defaultNoteLayout(nextLayoutIndex(targetNotes));
+    const settings = normalizeSettings(await tx.objectStore('settings').get(SETTINGS_KEY));
+    const targetCanvas = await canvases.get(canvasId);
+    const existingLayout = existing.layout;
+    const widthLocked = existingLayout
+      ? (existingLayout.widthLocked ?? existingLayout.heightLocked ?? false)
+      : false;
+    const width = widthLocked && existingLayout ? existingLayout.width : settings.defaultNoteWidth;
+    const height = existingLayout?.height ?? NOTE_HEIGHT_DEFAULT;
+    const placement = findNotePlacement({
+      notes: targetNotes,
+      width,
+      height,
+      reference: targetCanvas?.viewport,
+      gap: NOTE_GAP,
+    });
+    const topZ = targetNotes.reduce(
+      (highest, note) => Math.max(highest, note.layout?.zIndex ?? 0),
+      0,
+    );
+    layout = {
+      x: placement.x,
+      y: placement.y,
+      width,
+      height,
+      zIndex: topZ + 1,
+      widthLocked,
+      ...(existingLayout?.heightLocked ? { heightLocked: true } : {}),
+    };
   }
 
   const nextTitle = patch.title === undefined ? existing.title : cleanTitle(patch.title);
