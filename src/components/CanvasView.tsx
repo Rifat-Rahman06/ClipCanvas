@@ -26,6 +26,7 @@ import {
   useReactFlow,
   useStore,
   useViewport,
+  ViewportPortal,
   type Node,
   type NodeProps,
   type OnMove,
@@ -67,6 +68,13 @@ import {
 } from '../types';
 import { defaultNoteLayout } from '../services/db/repository';
 import { useSelectionAutoScroll } from '../hooks/useSelectionAutoScroll';
+import {
+  SNAP_ACTIVATE_DISTANCE_PX,
+  SNAP_RELEASE_DISTANCE_PX,
+  findAlignmentSnap,
+  type AlignmentGuide,
+  type AxisLock,
+} from '../lib/snapping';
 import { Button, IconButton } from './Button';
 import { ActiveNoteToolbar } from './ActiveNoteToolbar';
 import {
@@ -388,6 +396,18 @@ function sameLayout(a: NoteLayout, b: NoteLayout): boolean {
   );
 }
 
+function sameGuides(a: AlignmentGuide[], b: AlignmentGuide[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every(
+    (guide, index) =>
+      guide.axis === b[index].axis &&
+      guide.position === b[index].position &&
+      guide.from === b[index].from &&
+      guide.to === b[index].to,
+  );
+}
+
 interface CanvasViewProps {
   canvas: Canvas;
   notes: Note[];
@@ -470,6 +490,7 @@ function CanvasSurface({
   const [resizingNoteId, setResizingNoteId] = useState<string | null>(null);
   const {
     getNode,
+    getNodes,
     getViewport,
     getZoom,
     screenToFlowPosition,
@@ -478,6 +499,7 @@ function CanvasSurface({
   } = useReactFlow<NoteCanvasNode>();
   const canvasWidth = useStore((state) => state.width);
   const canvasHeight = useStore((state) => state.height);
+  const canvasZoom = useStore((state) => state.transform[2]);
 
   const nodeTypes = useMemo(() => ({ note: NoteNode }), []);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -499,6 +521,13 @@ function CanvasSurface({
   const editorsRef = useRef(new Map<string, Editor>());
   const liveContentRef = useRef(new Map<string, () => NoteContentSnapshot>());
   const pendingLayoutsRef = useRef(new Map<string, NoteLayout>());
+  // Alignment snapping is resolved per drag frame from the raw pointer position.
+  // The locks keep a snap engaged while the element is inside the release zone.
+  const snapLockRef = useRef<{ x: AxisLock | null; y: AxisLock | null }>({
+    x: null,
+    y: null,
+  });
+  const [snapGuides, setSnapGuides] = useState<AlignmentGuide[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchMatches, setSearchMatches] = useState<CanvasSearchMatch[]>([]);
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
@@ -891,6 +920,8 @@ function CanvasSurface({
     pendingLayoutsRef.current.clear();
     focusZoomRef.current = null;
     horizontalSnapGestureRef.current = false;
+    snapLockRef.current = { x: null, y: null };
+    setSnapGuides((current) => (current.length === 0 ? current : []));
     setEditingNoteId(null);
     setResizingNoteId(null);
     clearEditZoomTimer();
@@ -1300,8 +1331,116 @@ function CanvasSurface({
     ],
   );
 
+  /**
+   * Resolves the magnetic alignment for a node using its raw (unsnapped)
+   * position. `getNodes()` is the live React Flow store, so the other elements'
+   * current positions and measured sizes are used even mid-drag.
+   */
+  const resolveDragSnap = useCallback(
+    (node: NoteCanvasNode) => {
+      const fallback = {
+        dx: 0,
+        dy: 0,
+        guides: [] as AlignmentGuide[],
+        lockX: null as AxisLock | null,
+        lockY: null as AxisLock | null,
+        position: node.position,
+      };
+
+      const liveNodes = getNodes();
+      // A group drag moves every selected element together; snapping just the
+      // grabbed one would pull it out of formation, so leave group drags free.
+      if (liveNodes.some((other) => other.id !== node.id && other.selected)) {
+        return fallback;
+      }
+
+      const layout = node.data.note.layout;
+      const width = Math.max(
+        1,
+        Number(
+          node.measured?.width ??
+            node.width ??
+            layout?.width ??
+            settings.defaultNoteWidth,
+        ),
+      );
+      const height = Math.max(
+        1,
+        Number(node.measured?.height ?? node.height ?? layout?.height ?? 340),
+      );
+      const others = liveNodes
+        .filter((other) => other.id !== node.id)
+        .map((other) => {
+          const otherLayout = other.data.note.layout;
+          return {
+            x: other.position.x,
+            y: other.position.y,
+            width: Number(
+              other.measured?.width ??
+                other.width ??
+                otherLayout?.width ??
+                settings.defaultNoteWidth,
+            ),
+            height: Number(
+              other.measured?.height ?? other.height ?? otherLayout?.height ?? 340,
+            ),
+          };
+        });
+      const zoom = Math.max(CANVAS_MIN_ZOOM, getZoom());
+      const result = findAlignmentSnap(
+        { x: node.position.x, y: node.position.y, width, height },
+        others,
+        {
+          // Thresholds are screen pixels, so convert them into flow units.
+          snapDistance: SNAP_ACTIVATE_DISTANCE_PX / zoom,
+          releaseDistance: SNAP_RELEASE_DISTANCE_PX / zoom,
+          lockX: snapLockRef.current.x,
+          lockY: snapLockRef.current.y,
+        },
+      );
+      return {
+        ...result,
+        position: {
+          x: node.position.x + result.dx,
+          y: node.position.y + result.dy,
+        },
+      };
+    },
+    [getNodes, getZoom, settings.defaultNoteWidth],
+  );
+
+  const handleNodeDrag: OnNodeDrag<NoteCanvasNode> = useCallback(
+    (_event, node) => {
+      const resolved = resolveDragSnap(node);
+      snapLockRef.current = { x: resolved.lockX, y: resolved.lockY };
+      setSnapGuides((current) =>
+        sameGuides(current, resolved.guides) ? current : resolved.guides,
+      );
+      if (resolved.dx !== 0 || resolved.dy !== 0) {
+        setNodes((current) =>
+          current.map((item) =>
+            item.id === node.id ? { ...item, position: resolved.position } : item,
+          ),
+        );
+      }
+    },
+    [resolveDragSnap, setNodes],
+  );
+
   const handleDragStop: OnNodeDrag<NoteCanvasNode> = useCallback(
     (_event, node) => {
+      // React Flow reports the raw pointer position when the drag ends, so the
+      // snap is resolved once more to persist the alignment the user saw.
+      const resolved = resolveDragSnap(node);
+      snapLockRef.current = { x: null, y: null };
+      setSnapGuides((current) => (current.length === 0 ? current : []));
+      if (resolved.dx !== 0 || resolved.dy !== 0) {
+        setNodes((current) =>
+          current.map((item) =>
+            item.id === node.id ? { ...item, position: resolved.position } : item,
+          ),
+        );
+      }
       const draggedNote = notes.find((item) => item.id === node.id);
       // A resize may have just completed and still be in flight; prefer the
       // newest geometry over the stale `notes` prop so moving an element never
@@ -1329,8 +1468,8 @@ function CanvasSurface({
         0,
       );
       handleNoteLayoutChange(node.id, {
-        x: node.position.x,
-        y: node.position.y,
+        x: resolved.position.x,
+        y: resolved.position.y,
         width,
         height,
         zIndex: Math.max(topZ + 1, storedLayout?.zIndex ?? 0),
@@ -1338,7 +1477,13 @@ function CanvasSurface({
         widthLocked: storedLayout ? storedLayout.widthLocked : undefined,
       });
     },
-    [handleNoteLayoutChange, notes, settings.defaultNoteWidth],
+    [
+      handleNoteLayoutChange,
+      notes,
+      resolveDragSnap,
+      setNodes,
+      settings.defaultNoteWidth,
+    ],
   );
 
   const addCanvasImages = useCallback(
@@ -1624,6 +1769,7 @@ function CanvasSurface({
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onPaneClick={handlePaneClick}
+        onNodeDrag={handleNodeDrag}
         onNodeDragStop={handleDragStop}
         onMoveStart={handleMoveStart}
         onMove={handleMove}
@@ -1648,6 +1794,38 @@ function CanvasSurface({
           size={1.1}
           color="var(--line-faint)"
         />
+        {snapGuides.length > 0 ? (
+          <ViewportPortal>
+            {snapGuides.map((guide) => {
+              // Flow units scale with the viewport, so divide by zoom to keep
+              // the guide exactly one screen pixel thick at every zoom level.
+              const thickness =
+                1 / Math.max(CANVAS_MIN_ZOOM, canvasZoom > 0 ? canvasZoom : 1);
+              const length = Math.max(1, guide.to - guide.from);
+              return (
+                <div
+                  key={`${guide.axis}-${guide.position}`}
+                  className={`canvas-snap-guide is-${guide.axis}`}
+                  style={
+                    guide.axis === 'x'
+                      ? {
+                          left: guide.position,
+                          top: guide.from,
+                          width: thickness,
+                          height: length,
+                        }
+                      : {
+                          left: guide.from,
+                          top: guide.position,
+                          width: length,
+                          height: thickness,
+                        }
+                  }
+                />
+              );
+            })}
+          </ViewportPortal>
+        ) : null}
         <Panel position="top-right" className="canvas-fit-panel">
           {compactInsertVisible ? (
             <IconButton

@@ -687,3 +687,15 @@
 .react-flow__resize-control.line.note-edge-resize:active::after {
   background: var(--accent);
 }
+
+/* Magnetic alignment guide, rendered in flow coordinates via ViewportPortal. */
+.canvas-snap-guide {
+  position: absolute;
+  /* Above every note (note z-indexes grow by one per interaction) while still
+     inside the viewport's stacking context, so panels stay on top. */
+  z-index: 100000;
+  border-radius: 999px;
+  background: var(--snap-guide);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent);
+  pointer-events: none;
+}

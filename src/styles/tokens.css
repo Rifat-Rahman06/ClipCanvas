@@ -40,6 +40,9 @@
   --accent-wash-strong: rgba(215, 231, 223, 0.6);
   --accent-wash-bg: #f5faf7;
 
+  /* Magnetic alignment guide shown while an element is snapped into place. */
+  --snap-guide: #15473b;
+
   /* Text placed on top of a filled accent or danger surface. */
   --on-accent: #fdfcf8;
   --on-danger: #ffffff;
@@ -154,6 +157,9 @@
   --accent-wash: rgba(88, 171, 141, 0.09);
   --accent-wash-strong: rgba(88, 171, 141, 0.16);
   --accent-wash-bg: #2c3b34;
+
+  /* Magnetic alignment guide shown while an element is snapped into place. */
+  --snap-guide: #45a084;
 
   --on-accent: #10211b;
   --on-danger: #2a1210;
