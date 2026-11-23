@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -1752,6 +1753,13 @@ function CanvasSurface({
     <div
       className="canvas-view"
       ref={canvasRef}
+      style={
+        {
+          // Counter-scale screen-pixel accents (such as the resting note top
+          // line) against the current viewport zoom.
+          '--canvas-inverse-zoom': 1 / Math.max(0.005, canvasZoom),
+        } as CSSProperties
+      }
       onPointerDownCapture={handleCanvasPointerDownCapture}
       onPointerMove={(event) => {
         pointerRef.current = { x: event.clientX, y: event.clientY, inside: true };

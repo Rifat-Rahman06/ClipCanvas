@@ -282,6 +282,26 @@
   outline-offset: 5px;
 }
 
+/* A subtle accent over the straight part of that resting outline. It is drawn
+   on the node wrapper rather than the card so image notes, which clip their
+   overflow, keep it too. The height is counter-scaled against the viewport
+   zoom so the line stays one screen pixel thick when zoomed out; the side
+   insets match the 10px border radius plus the 5px outline offset so the
+   accent stops before the rounded corners. */
+.react-flow__node-note:has(.note-card:not(.is-active):not(.is-editing)):not(:focus)::before {
+  content: '';
+  position: absolute;
+  right: 15px;
+  bottom: calc(100% + 5px);
+  left: 15px;
+  z-index: 1;
+  height: calc(1px * var(--canvas-inverse-zoom, 1));
+  border-radius: 1px;
+  background: var(--accent);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 /* Inline status badges stay readable at every canvas zoom level. */
 .note-badge {
   position: absolute;
