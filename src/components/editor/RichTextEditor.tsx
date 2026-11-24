@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type ComponentProps,
+  type ComponentType,
+} from 'react';
 import {
   EditorContent,
   Extension,
@@ -9,6 +16,7 @@ import {
   type Editor,
 } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
+import { useReactFlow, useStoreApi } from '@xyflow/react';
 import { Bold, Clipboard, Highlighter, List } from 'lucide-react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -20,7 +28,7 @@ import {
   TableRow,
 } from '@tiptap/extension-table';
 import type { EditorProps, EditorView } from '@tiptap/pm/view';
-import type { Transaction } from '@tiptap/pm/state';
+import { PluginKey, type Transaction } from '@tiptap/pm/state';
 import { createAttachment } from '../../services/db/attachments';
 import { compressImage } from '../../lib/images';
 import {
@@ -34,6 +42,15 @@ import {
 import { useToast } from '../../state/ToastContext';
 import { AttachmentImage } from './AttachmentImage';
 import { IconButton } from '../Button';
+
+// The React BubbleMenu forwards `pluginKey` to its ProseMirror plugin at
+// runtime, but its published prop type omits it. A stable key lets transactions
+// target this editor's menu instead of relying on TipTap's auto-generated key.
+const NOTE_BUBBLE_MENU_KEY = new PluginKey('noteBubbleMenu');
+type KeyedBubbleMenuProps = ComponentProps<typeof BubbleMenu> & {
+  pluginKey: PluginKey;
+};
+const KeyedBubbleMenu = BubbleMenu as unknown as ComponentType<KeyedBubbleMenuProps>;
 
 /**
  * Stores highlights as a plain `<mark>` element. The visible color comes from
@@ -138,11 +155,13 @@ export function RichTextEditor({
     (view: EditorView, data: DataTransfer | null) => boolean
   >(() => false);
   const pointerReleaseRef = useRef<{
-    x: number;
-    y: number;
+    flowX: number;
+    flowY: number;
     from: number;
     to: number;
   } | null>(null);
+  const { screenToFlowPosition, flowToScreenPosition } = useReactFlow();
+  const flowStore = useStoreApi();
 
   // Tiptap compares these options on every render. Re-creating extension
   // instances or editor props forces it to replace the view props and call
@@ -276,6 +295,11 @@ export function RichTextEditor({
     const handleBlur = () => {
       pointerReleaseRef.current = null;
       onBlurRef.current?.();
+      // TipTap appends the menu to <body>, which makes its own blur guard
+      // treat every focus target as part of the menu. Hide explicitly.
+      if (!editor.isDestroyed) {
+        editor.view.dispatch(editor.state.tr.setMeta(NOTE_BUBBLE_MENU_KEY, 'hide'));
+      }
     };
     const handleFocus = () => onFocusRef.current?.();
     editor.on('blur', handleBlur);
@@ -305,7 +329,36 @@ export function RichTextEditor({
     // an empty editor through autosave and can re-render it while focus is
     // moving into the document.
     editor.setEditable(editable, false);
+    // Leaving the edit session hides the editor without blurring it, so the
+    // menu would otherwise stay portaled over the canvas.
+    if (!editable) {
+      editor.view.dispatch(editor.state.tr.setMeta(NOTE_BUBBLE_MENU_KEY, 'hide'));
+    }
   }, [editor, editable]);
+
+  // The menu is portaled to <body> with a fixed position. Canvas pan and zoom
+  // move the note through a CSS transform, which fires no window scroll or
+  // resize, so ask TipTap to recompute the anchor while the viewport moves.
+  useEffect(() => {
+    if (!editor) return;
+    let frame: number | null = null;
+    const unsubscribe = flowStore.subscribe((state, previous) => {
+      if (state.transform === previous.transform) return;
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        if (editor.isDestroyed || !editableRef.current) return;
+        if (editor.state.selection.empty) return;
+        editor.view.dispatch(
+          editor.state.tr.setMeta(NOTE_BUBBLE_MENU_KEY, 'updatePosition'),
+        );
+      });
+    });
+    return () => {
+      unsubscribe();
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [editor, flowStore]);
 
   // Remember where a mouse selection was released. ProseMirror clamps the
   // caret to the nearest text position, so releasing in the note's blank area
@@ -340,9 +393,13 @@ export function RichTextEditor({
         if (editor.isDestroyed) return;
         const { selection } = editor.state;
         if (selection.empty) return;
-        pointerReleaseRef.current = {
+        const flow = screenToFlowPosition({
           x: event.clientX,
           y: event.clientY,
+        });
+        pointerReleaseRef.current = {
+          flowX: flow.x,
+          flowY: flow.y,
           from: selection.from,
           to: selection.to,
         };
@@ -350,7 +407,7 @@ export function RichTextEditor({
         // no transaction would move the already-visible menu. Nudge the plugin
         // (its default plugin key) to recompute the placement.
         editor.view.dispatch(
-          editor.state.tr.setMeta('bubbleMenu', 'updatePosition'),
+          editor.state.tr.setMeta(NOTE_BUBBLE_MENU_KEY, 'updatePosition'),
         );
       }, 0);
     };
@@ -361,7 +418,7 @@ export function RichTextEditor({
       window.removeEventListener('mousedown', handleMouseDown, true);
       window.removeEventListener('mouseup', handleMouseUp, true);
     };
-  }, [editor]);
+  }, [editor, screenToFlowPosition]);
 
   // The selection menu is portaled to <body> with a fixed strategy so the
   // React Flow zoom transform can neither scale nor clip it. Both props keep a
@@ -391,7 +448,10 @@ export function RichTextEditor({
 
     const release = pointerReleaseRef.current;
     if (release && release.from === selection.from && release.to === selection.to) {
-      const rect = new DOMRect(release.x, release.y, 0, 1);
+      // The anchor is stored in flow coordinates so it keeps pointing at the
+      // same spot on the note while the canvas pans or zooms.
+      const point = flowToScreenPosition({ x: release.flowX, y: release.flowY });
+      const rect = new DOMRect(point.x, point.y, 0, 1);
       return {
         getBoundingClientRect: () => rect,
         getClientRects: () => [rect],
@@ -411,7 +471,7 @@ export function RichTextEditor({
       // TipTap's default selection anchoring.
       return null;
     }
-  }, [editor]);
+  }, [editor, flowToScreenPosition]);
 
   const runSelectionFormat = useCallback(
     (action: 'bold' | 'highlight' | 'bulletList') => {
@@ -503,8 +563,9 @@ export function RichTextEditor({
           }
         }}
       />
-      <BubbleMenu
+      <KeyedBubbleMenu
         editor={editor}
+        pluginKey={NOTE_BUBBLE_MENU_KEY}
         appendTo={bubbleMenuAppendTo}
         getReferencedVirtualElement={getBubbleMenuAnchor}
         options={bubbleMenuOptions}
@@ -540,7 +601,7 @@ export function RichTextEditor({
         >
           <Clipboard size={15} />
         </IconButton>
-      </BubbleMenu>
+      </KeyedBubbleMenu>
     </>
   );
 }
