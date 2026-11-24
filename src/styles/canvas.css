@@ -255,7 +255,7 @@
   height: auto;
   min-height: 0;
   overflow: visible;
-  border-radius: 10px;
+  border-radius: 0 0 10px 10px;
   background: transparent;
   color: var(--ink-800);
 }
@@ -279,26 +279,26 @@
    together. Invisible while the note is active or being edited. */
 .note-card:not(.is-active):not(.is-editing) {
   outline: 1px solid var(--line-faint);
-  outline-offset: 5px;
+  outline-offset: 0;
 }
 
-/* A subtle accent over the straight part of that resting outline. It is drawn
+/* A rounded accent cap over the note's top edge, always visible. It is drawn
    on the node wrapper rather than the card so image notes, which clip their
-   overflow, keep it too. The height is counter-scaled against the viewport
-   zoom so the line stays one screen pixel thick when zoomed out; the side
-   insets match the 10px border radius plus the 5px outline offset so the
-   accent stops before the rounded corners. */
-.react-flow__node-note:has(.note-card:not(.is-active):not(.is-editing)):not(:focus)::before {
+   overflow, keep it too. The 2px outline fills the 1px gap to the card and
+   lines up with the card's own outline. */
+.react-flow__node-note::before {
   content: '';
   position: absolute;
-  right: 15px;
-  bottom: calc(100% + 5px);
-  left: 15px;
+  right: 0;
+  left: 0;
   z-index: 1;
-  height: calc(1px * var(--canvas-inverse-zoom, 1));
-  border-radius: 1px;
+  height: 6px;
+  top: -7px;
+  border-radius: 10px 10px 0 0;
   background: var(--accent);
   opacity: 0.55;
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
   pointer-events: none;
 }
 
@@ -377,7 +377,7 @@
   max-height: none;
   /* Left padding follows the Editor left padding setting; the right, top, and
      bottom values stay fixed so only the text start moves. */
-  padding: 2px 8px 14px var(--note-left-padding, 8px);
+  padding: 8px 8px 14px var(--note-left-padding, 8px);
   overflow: visible;
 }
 
