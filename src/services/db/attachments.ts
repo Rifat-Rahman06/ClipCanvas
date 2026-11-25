@@ -33,6 +33,11 @@ export async function getAttachment(id: string): Promise<AttachmentRecord | unde
   return db.get('attachments', id);
 }
 
+export async function getAttachmentBlob(id: string): Promise<Blob | null> {
+  const record = await getAttachment(id);
+  return record?.blob ?? null;
+}
+
 export async function getAttachmentUrl(id: string): Promise<string | null> {
   const cached = objectUrls.get(id);
   if (cached) return cached;

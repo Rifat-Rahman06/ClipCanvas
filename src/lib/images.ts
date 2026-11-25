@@ -40,6 +40,27 @@ export async function compressImage(file: Blob): Promise<CompressedImage> {
   return { blob, width, height, mimeType };
 }
 
+/**
+ * Converts a stored image to PNG for the system clipboard. Chrome's async
+ * clipboard reliably accepts `image/png`; notes store WebP or JPEG.
+ */
+export async function blobToPng(blob: Blob): Promise<Blob> {
+  const bitmap = await loadBitmap(blob);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, bitmap.width);
+  canvas.height = Math.max(1, bitmap.height);
+  const context = canvas.getContext('2d');
+  if (!context) {
+    closeBitmap(bitmap);
+    throw new Error('This browser could not prepare the image.');
+  }
+  context.drawImage(bitmap, 0, 0);
+  closeBitmap(bitmap);
+  const png = await canvasToBlob(canvas, 'image/png', 1);
+  if (!png) throw new Error('This image could not be prepared for copying.');
+  return png;
+}
+
 async function loadBitmap(file: Blob): Promise<ImageBitmap | HTMLImageElement> {
   if (typeof createImageBitmap === 'function') {
     try {

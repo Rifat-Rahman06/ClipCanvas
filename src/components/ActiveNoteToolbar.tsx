@@ -16,6 +16,8 @@ import {
   textFromHtmlForCopy,
   type TextFromHtmlOptions,
 } from '../lib/richText';
+import { blobToPng } from '../lib/images';
+import { getAttachmentBlob } from '../services/db/attachments';
 import { downloadTextFile } from '../services/import-export/download';
 import { useToast } from '../state/ToastContext';
 import { ActionMenu } from './ActionMenu';
@@ -83,7 +85,46 @@ export function ActiveNoteToolbar({
       : (note.contentText ?? '');
   };
 
+  /** The attachment id of an image note, read from its HTML or Markdown source. */
+  const resolveImageAttachmentId = (): string => {
+    const htmlId = /data-attachment-id="([^"]+)"/.exec(note.contentHtml ?? '')?.[1];
+    if (htmlId) return htmlId;
+    return /attachment:\/\/([^\s)"']+)/.exec(note.content)?.[1] ?? '';
+  };
+
+  /**
+   * Image notes copy their stored bytes to the system clipboard, so the image
+   * can be pasted into other apps or back onto a canvas. Text notes keep the
+   * Markdown copy path in `copyElement` below.
+   */
+  const copyImageElement = async () => {
+    const attachmentId = resolveImageAttachmentId();
+    if (!attachmentId) {
+      notify({ kind: 'error', message: 'This image is no longer available.' });
+      return;
+    }
+    try {
+      const blob = await getAttachmentBlob(attachmentId);
+      if (!blob) {
+        notify({ kind: 'error', message: 'This image is no longer available.' });
+        return;
+      }
+      // Passing a promise keeps the clipboard write inside the click's user
+      // activation while the stored WebP/JPEG is converted to the PNG format
+      // Chrome's async clipboard accepts.
+      const png = blob.type === 'image/png' ? Promise.resolve(blob) : blobToPng(blob);
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+      notify({ kind: 'success', message: 'Image copied.' });
+    } catch {
+      notify({ kind: 'error', message: 'Could not copy this image.' });
+    }
+  };
+
   const copyElement = () => {
+    if (note.kind === 'image') {
+      void copyImageElement();
+      return;
+    }
     const text = resolveSource();
     if (!text.trim()) {
       notify({ kind: 'info', message: 'This element has no text to copy.' });
@@ -128,7 +169,11 @@ export function ActiveNoteToolbar({
       >
         <ClipboardCopy size={15} />
       </IconButton>
-      <IconButton label="Copy note as Markdown" size="sm" onClick={copyElement}>
+      <IconButton
+        label={note.kind === 'image' ? 'Copy image' : 'Copy note as Markdown'}
+        size="sm"
+        onClick={copyElement}
+      >
         <Clipboard size={15} />
       </IconButton>
       <ActionMenu
